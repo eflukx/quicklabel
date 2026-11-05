@@ -1,0 +1,21 @@
+# Dutch texts of quicklabel: "English text" = "Nederlandse tekst". Keep {placeholders}.
+# Compiled into the exe (include_str!): nothing to ship next to it.
+
+"Add" = "Toevoegen"
+"Ctrl+Enter prints  ·  **bold**  *italic*  ·  Ctrl+D date  ·  Ctrl+T time  ·  Esc closes" = "Ctrl+Enter print  ·  **vet**  *cursief*  ·  Ctrl+D datum  ·  Ctrl+T tijd  ·  Esc sluit"
+"No printer ready with tape loaded" = "Geen printer klaar met tape erin"
+"No printer yet: add its address under Printers" = "Nog geen printer: voeg het adres toe onder Printers"
+"No printer: saved as {path}" = "Geen printer: opgeslagen als {path}"
+"Print on this printer" = "Op deze printer printen"
+"Printed on {printer}" = "Geprint op {printer}"
+"Printer address, e.g. 192.168.1.40" = "Printeradres, bv. 192.168.1.40"
+"Printers" = "Printers"
+"Printing…" = "Bezig met printen…"
+"Remove this printer" = "Deze printer verwijderen"
+"Saving the settings failed: {error}" = "Opslaan van de instellingen mislukt: {error}"
+"Type the label text" = "Typ de labeltekst"
+"{host} doesn't answer" = "{host} antwoordt niet"
+"{host} now has {tape} loaded" = "In {host} zit nu {tape}"
+"{host} reports {errors}" = "{host} meldt {errors}"
+"{host}: checking…" = "{host}: controleren…"
+"{host}: doesn't answer" = "{host}: antwoordt niet"

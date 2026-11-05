@@ -1,0 +1,22 @@
+[package]
+name = "quicklabel"
+description = "Quick label: type a few lines, Ctrl+Enter prints them on a Brother QL."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+chopshop-i18n.workspace = true
+chopshop-label.workspace = true
+chopshop-printer.workspace = true
+eframe.workspace = true
+egui.workspace = true
+image.workspace = true
+jiff.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sys-locale = "0.3"
+
+[lints]
+workspace = true
