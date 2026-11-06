@@ -12,7 +12,8 @@
 //! `%APPDATA%\iotta\quicklabel.json` (elsewhere `~/.config/iotta/quicklabel.json`; the
 //! `QUICKLABEL_SETTINGS` variable points elsewhere). `--text <text>` starts with a text,
 //! `--screenshot <png>` saves the window after a moment and quits (docs); `--dark` or `--light`
-//! overrides Windows' theme.
+//! overrides Windows' theme. `--resident` is resident mode's background process
+//! ([`resident`]).
 
 // A GUI program on Windows: no console window when the hotkey starts it.
 #![cfg_attr(windows, windows_subsystem = "windows")]
@@ -20,6 +21,7 @@
 mod app;
 mod numbering;
 mod printer;
+mod resident;
 mod settings;
 mod style;
 
@@ -30,6 +32,7 @@ fn main() -> eframe::Result {
     let mut text = None;
     let mut screenshot = None;
     let mut theme = None;
+    let mut resident = false;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -37,12 +40,43 @@ fn main() -> eframe::Result {
             "--screenshot" => screenshot = args.next().map(std::path::PathBuf::from),
             "--dark" => theme = Some(egui::Theme::Dark),
             "--light" => theme = Some(egui::Theme::Light),
+            "--resident" => resident = true,
             _ => {}
         }
     }
 
     chopshop_i18n::install_dutch(DUTCH);
-    app::run(text, screenshot, theme)
+    if resident {
+        run_resident();
+        return Ok(());
+    }
+
+    // One window: a second start brings the open one forward.
+    let window = if screenshot.is_some() {
+        None
+    } else {
+        match resident::claim(resident::WINDOW_PORT) {
+            Some(listener) => Some(listener),
+            None if resident::send(resident::WINDOW_PORT, "show") => return Ok(()),
+            None => None,
+        }
+    };
+    app::run(text, screenshot, theme, window)
+}
+
+/// The background process of resident mode; why it stopped goes to `resident.log` next to
+/// the settings.
+fn run_resident() {
+    #[cfg(windows)]
+    {
+        let settings = settings::Settings::load();
+        if let Err(error) = resident::run(settings.hotkey()) {
+            let log = settings::Settings::path().with_file_name("resident.log");
+            let _ = std::fs::write(log, format!("{error}\n"));
+        }
+    }
+    #[cfg(not(windows))]
+    eprintln!("resident mode is for Windows");
 }
 
 #[cfg(test)]

@@ -18,6 +18,10 @@ pub struct Settings {
     pub theme: String,
     /// The text of the last run: shown selected at the next start.
     pub last_text: String,
+    /// Resident mode: a background process holds the hotkey (Windows).
+    pub resident: bool,
+    /// The hotkey, as Windows writes it (`CTRL+ALT+L`); empty: Ctrl+Alt+L.
+    pub hotkey: String,
     /// How labels are laid out, per tape (the media id: `62`, `62x29`, `29`, …).
     pub layouts: BTreeMap<String, Layout>,
 }
@@ -102,6 +106,16 @@ impl Settings {
         }
         let text = serde_json::to_string_pretty(self).map_err(|error| error.to_string())?;
         std::fs::write(&path, text).map_err(|error| format!("{}: {error}", path.display()))
+    }
+
+    /// The hotkey: the set one, else `CTRL+ALT+L`.
+    #[must_use]
+    pub fn hotkey(&self) -> &str {
+        if self.hotkey.is_empty() {
+            "CTRL+ALT+L"
+        } else {
+            &self.hotkey
+        }
     }
 
     /// Where a label goes when there is no printer: a `labels` folder next to the settings.

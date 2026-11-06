@@ -21,6 +21,14 @@ Type a few lines, press **Ctrl+Enter**: printed on the Brother QL label printer.
 - English or Dutch (EN / NL, top right; at first the system's language). Light or dark as
   Windows is set, or by the moon / sun button (remembered).
 
+## Instantly under the hotkey (resident mode)
+
+Windows takes a few seconds for a shortcut's key. In Quick label: Settings → **Stay ready in
+the background**. A small process (`quicklabel --resident`, a few MB, idle) then holds
+Ctrl+Alt+L and starts with Windows; the window is there in about half a second. Switching it on
+takes the key off the Start menu shortcut; Windows may hold on to it until the next sign-in.
+Off: the process stops and the shortcut gets the key back.
+
 ## Install (Windows)
 
 Put `quicklabel.exe` and `install.ps1` in one folder and run `install.ps1` (right click, Run

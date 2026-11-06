@@ -11,7 +11,7 @@ use egui::{Color32, CornerRadius, Key, Modifiers, RichText, Ui};
 
 use crate::printer::{Link, State};
 use crate::settings::{self, Cut, Layout, Settings};
-use crate::{numbering, style};
+use crate::{numbering, resident, style};
 
 /// Tape assumed for the preview while no printer reports one.
 const DEFAULT_MEDIA: &str = "62";
@@ -42,6 +42,10 @@ struct App {
     printing: bool,
     /// How many labels Print makes; back to 1 each start.
     copies: u16,
+    /// Whether the resident process runs, and when that was asked.
+    resident_running: Option<(bool, Instant)>,
+    /// Why switching resident mode failed.
+    resident_error: Option<String>,
     close_at: Option<Instant>,
     focused: bool,
     show_printers: bool,
@@ -55,11 +59,12 @@ pub fn run(
     text: Option<String>,
     screenshot: Option<PathBuf>,
     theme: Option<egui::Theme>,
+    window: Option<std::net::TcpListener>,
 ) -> eframe::Result {
     let viewport = egui::ViewportBuilder::default()
         .with_title("Quick label")
         .with_icon(std::sync::Arc::new(style::window_icon()))
-        .with_inner_size([680.0, 540.0])
+        .with_inner_size([680.0, 600.0])
         .with_min_inner_size([620.0, 440.0])
         .with_always_on_top();
     let native = eframe::NativeOptions {
@@ -90,6 +95,16 @@ pub fn run(
             });
 
             let ctx = creation.egui_ctx.clone();
+            if let Some(listener) = window {
+                let ctx = ctx.clone();
+                resident::serve(listener, move |message| {
+                    if message == "show" {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                        ctx.request_repaint();
+                    }
+                });
+            }
             let printers = settings
                 .printers
                 .iter()
@@ -107,6 +122,8 @@ pub fn run(
                 message: None,
                 printing: false,
                 copies: 1,
+                resident_running: None,
+                resident_error: None,
                 close_at: None,
                 focused: false,
                 show_printers,
@@ -675,6 +692,7 @@ impl App {
             .inner_margin(egui::Margin::same(18))
             .show(&mut card, |ui| {
                 ui.set_min_size(rect.size() - egui::Vec2::splat(36.0));
+                egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(t("Printers")).font(style::semibold(19.0)));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -755,10 +773,91 @@ impl App {
                         changed = true;
                     }
                 });
+
+                if cfg!(windows) {
+                    ui.add_space(18.0);
+                    self.resident_section(ui);
+                }
+                });
             });
 
         if changed {
             self.save();
+        }
+    }
+
+    /// Resident mode: on or off, and whether the background process runs.
+    fn resident_section(&mut self, ui: &mut Ui) {
+        let c = style::palette(ui.ctx());
+        let hotkey = self.settings.hotkey().to_owned();
+        // CTRL+ALT+L as Ctrl+Alt+L.
+        let shown = hotkey
+            .split('+')
+            .map(|part| {
+                let mut chars = part.chars();
+                chars.next().map_or_else(String::new, |first| {
+                    first.to_string() + &chars.as_str().to_lowercase()
+                })
+            })
+            .collect::<Vec<_>>()
+            .join("+");
+        ui.label(RichText::new(t("Hotkey")).font(style::semibold(19.0)));
+        ui.label(
+            RichText::new(tf(
+                "{hotkey} opens Quick label from anywhere. Windows itself takes a few seconds for it; ready in the background, it opens at once.",
+                &[("hotkey", &shown)],
+            ))
+            .font(style::regular(14.0))
+            .color(c.muted),
+        );
+        ui.add_space(6.0);
+
+        let mut on = self.settings.resident;
+        let toggle = ui.checkbox(
+            &mut on,
+            RichText::new(t("Stay ready in the background (starts with Windows)"))
+                .font(style::medium(16.0)),
+        );
+        if toggle.changed() {
+            self.resident_error = switch_resident(on, &hotkey).err();
+            self.settings.resident = on;
+            self.resident_running = None;
+            self.save();
+        }
+
+        // Asked every few seconds while the card is open.
+        let stale = self
+            .resident_running
+            .is_none_or(|(_, at)| at.elapsed() > Duration::from_secs(2));
+        if stale {
+            self.resident_running = Some((resident::is_running(), Instant::now()));
+            ui.ctx().request_repaint_after(Duration::from_secs(2));
+        }
+        let running = self.resident_running.is_some_and(|(running, _)| running);
+        let (dot, text) = match (self.settings.resident, running) {
+            (true, true) => (c.accent, t("Running in the background")),
+            (true, false) => (
+                c.alarm,
+                t("On, but not running: switch it off and on again"),
+            ),
+            (false, true) => (c.echo, t("Off, but still running")),
+            (false, false) => (c.faint, t("Off: the Start menu shortcut has the key")),
+        };
+        ui.horizontal(|ui| {
+            let (spot, _) = ui.allocate_exact_size(egui::Vec2::splat(10.0), egui::Sense::hover());
+            ui.painter().circle_filled(spot.center(), 4.5, dot);
+            ui.label(
+                RichText::new(text)
+                    .font(style::regular(14.0))
+                    .color(c.muted),
+            );
+        });
+        if let Some(error) = &self.resident_error {
+            ui.label(
+                RichText::new(error)
+                    .font(style::regular(14.0))
+                    .color(c.alarm),
+            );
         }
     }
 
@@ -818,6 +917,23 @@ fn shape(media: &Media, layout: Layout) -> (Length, Run) {
     (length, run)
 }
 
+/// Switches resident mode on or off (Windows; elsewhere nothing to do).
+fn switch_resident(on: bool, hotkey: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        if on {
+            resident::enable(hotkey)
+        } else {
+            resident::disable(hotkey)
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (on, hotkey);
+        Ok(())
+    }
+}
+
 /// A printer's chip text and status dot.
 fn describe(host: &str, state: &State, c: &style::Palette) -> (String, Color32) {
     match state {
@@ -868,8 +984,8 @@ impl eframe::App for App {
                         ui.add_space(6.0);
                         self.theme_switch(ui);
                         ui.add_space(6.0);
-                        if style::chip(ui, t("Printers"), self.show_printers, None)
-                            .on_hover_text(t("Add or remove printers"))
+                        if style::chip(ui, t("Settings"), self.show_printers, None)
+                            .on_hover_text(t("Printers and the hotkey"))
                             .clicked()
                         {
                             self.show_printers = !self.show_printers;

@@ -18,5 +18,10 @@ serde.workspace = true
 serde_json.workspace = true
 sys-locale = "0.3"
 
+# Resident mode: the hotkey held by a small background process (Windows only).
+[target.'cfg(windows)'.dependencies]
+global-hotkey = "0.9"
+winit = "0.30"
+
 [lints]
 workspace = true
