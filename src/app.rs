@@ -7,7 +7,6 @@ use chopshop_i18n::{Language, t, tf};
 use chopshop_label::{Length, Run, TextLabel, Typeface};
 use chopshop_printer::Media;
 use chopshop_printer::job::Resolution;
-use chopshop_printer::net::Found;
 use egui::text::{CCursor, CCursorRange};
 use egui::{Color32, CornerRadius, Key, Modifiers, RichText, Ui};
 
@@ -78,6 +77,9 @@ struct App {
     new_printer: String,
     screenshot: Option<(PathBuf, Instant)>,
 }
+
+/// A printer the search found: its address (`usb:<serial>` on USB) and model.
+type Found = (String, String);
 
 /// Runs the window until it closes.
 /// `theme` overrides the system's light or dark.
@@ -1170,15 +1172,29 @@ impl App {
             };
             if ui
                 .add_enabled(!searching, egui::Button::new(text))
-                .on_hover_text(t("Asks every address of this network (and of the printers set) for its model, about 2 seconds"))
+                .on_hover_text(t("Looks for Brother QL printers on USB and asks every address of this network (and of the printers set) for its model, about 2 seconds"))
                 .clicked()
             {
                 let (sender, receiver) = std::sync::mpsc::channel();
                 let ctx = ctx.clone();
                 let known = known.clone();
                 std::thread::spawn(move || {
-                    let found =
-                        chopshop_printer::net::discover(Duration::from_millis(1500), &known);
+                    let mut found: Vec<Found> = chopshop_printer::usb::find()
+                        .into_iter()
+                        .map(|printer| {
+                            let model = chopshop_printer::usb::query_status(&printer.address)
+                                .map_or_else(|_| "Brother QL".to_owned(), |status| {
+                                    format!("Brother {}", status.model)
+                                });
+                            (printer.address, format!("{model} · USB"))
+                        })
+                        .collect();
+                    found.extend(
+                        chopshop_printer::net::discover(Duration::from_millis(1500), &known)
+                            .into_iter()
+                            .filter(chopshop_printer::net::Found::is_brother_ql)
+                            .map(|device| (device.address.to_string(), device.model)),
+                    );
                     let _ = sender.send(found);
                     ctx.request_repaint();
                 });
@@ -1188,14 +1204,10 @@ impl App {
 
         let mut added = false;
         if let Some((networks, found)) = &self.searched {
-            let printers: Vec<&Found> = found
-                .iter()
-                .filter(|device| device.is_brother_ql())
-                .collect();
-            if printers.is_empty() {
+            if found.is_empty() {
                 ui.label(
                     RichText::new(tf(
-                        "No Brother QL printer answered on {networks}",
+                        "No Brother QL printer on USB or answering on {networks}",
                         &[("networks", &networks.join(", "))],
                     ))
                     .font(style::regular(14.0))
@@ -1203,17 +1215,16 @@ impl App {
                 );
             }
             let mut add = None;
-            for device in printers {
-                let host = device.address.to_string();
+            for (host, model) in found {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(&host).font(style::medium(16.0)));
+                    ui.label(RichText::new(host).font(style::medium(16.0)));
                     ui.label(
-                        RichText::new(&device.model)
+                        RichText::new(model)
                             .font(style::regular(14.0))
                             .color(c.muted),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if self.settings.printers.contains(&host) {
+                        if self.settings.printers.contains(host) {
                             ui.label(
                                 RichText::new(t("added"))
                                     .font(style::regular(14.0))
@@ -1329,7 +1340,7 @@ impl App {
 
 /// The label's length and the way the text runs on `media`, for `layout`. Lengthwise is along
 /// the label's long side: along continuous tape, along a die-cut label's longer side.
-fn shape(media: &Media, layout: Layout) -> (Length, Run) {
+pub(crate) fn shape(media: &Media, layout: Layout) -> (Length, Run) {
     let across = u32::from(media.print_pins);
     let length = if media.is_continuous() {
         match layout.length {

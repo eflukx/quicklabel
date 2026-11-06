@@ -24,7 +24,9 @@ Type a few lines, press **Ctrl+Enter**: printed on the Brother QL label printer.
   text is the label's number from 1; `{n+12}` adds 12 (13, 14, …); `{n+007}` keeps the zeros (008, …).
 - The first time: Settings (top right) opens by itself; Search the network finds Brother QL
   printers (this PC's network and that of printers already set), or add the printer's address (for example `192.168.1.40`).
-  Several printers: click the one to print on. **HQ** per printer (on by default): high
+  Several printers: click the one to print on. **USB**: a QL plugged in shows up in the search
+  as `usb:<serial>` (no Brother driver needed: Windows' own "USB Printing Support"; not with
+  WinUSB/libusb from Zadig). **HQ** per printer (on by default): high
   resolution, 600 dpi along the tape, on models that have it (QL-710W, 720NW, 800 series);
   a little slower.
 - English or Dutch (the EN | NL switch, top right; at first the system's language). Light or dark as
@@ -53,4 +55,17 @@ needed: the fonts and texts are inside the exe. Settings: `%APPDATA%\iotta\quick
 ```bash
 cargo build --release -p quicklabel --target x86_64-pc-windows-gnu
 cargo run -p quicklabel -- [--text "…"] [--screenshot shot.png] [--dark | --light]
+```
+
+## From the command line
+
+```bat
+quicklabel --print 192.168.1.40 "Rack 4\n**do not move**"   :: prints once, the window's settings
+quicklabel --print usb:000H6Z560817 "Box {n}"                :: on USB
+quicklabel --find-printers                                   :: network and USB, with status
+quicklabel --abort usb:000H6Z560817                          :: stops a USB job the printer hangs on
+```
+
+`QUICKLABEL_PNG=x.png` saves the label instead of printing, `QUICKLABEL_JOB=x.bin` the job's
+bytes; `QL_USB_TRACE=1` logs every USB read and write.
 ```

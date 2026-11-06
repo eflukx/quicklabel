@@ -1,4 +1,5 @@
-//! One printer: its status every few seconds, and print jobs, on a thread of its own.
+//! One printer, on the network or on USB (`usb:<serial>`): its status every few seconds, and
+//! print jobs, on a thread of its own.
 
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -6,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use chopshop_i18n::tf;
 use chopshop_label::Bitmap;
-use chopshop_printer::{Media, Status, job, net, raster};
+use chopshop_printer::{Media, Status, job, net, raster, usb};
 
 /// How often the status is asked.
 const POLL: Duration = Duration::from_secs(3);
@@ -111,6 +112,17 @@ impl Link {
 }
 
 fn read_state(host: &str) -> State {
+    if usb::is_usb(host) {
+        // On USB the status is all there is: the model from it, "USB" as its name.
+        return match usb::query_status(host) {
+            Ok(status) => State::Online {
+                model: Some(format!("Brother {}", status.model)),
+                name: Some("USB".to_owned()),
+                status,
+            },
+            Err(_) => State::Offline,
+        };
+    }
     match net::query_status(host) {
         Ok(status) => State::Online {
             status,
@@ -162,8 +174,13 @@ fn worker(
                 .map_err(|error| error.to_string())
                 .and_then(|pages| {
                     let pages: Vec<&[_]> = pages.iter().map(Vec::as_slice).collect();
-                    net::send_job(host, &job::pages_bytes(&pages, media, cut, resolution))
-                        .map_err(|error| error.to_string())
+                    let bytes = job::pages_bytes(&pages, media, cut, resolution);
+                    if usb::is_usb(host) {
+                        usb::send_job(host, &bytes)
+                    } else {
+                        net::send_job(host, &bytes)
+                    }
+                    .map_err(|error| error.to_string())
                 })
                 .map(|()| {
                     name.clone()
