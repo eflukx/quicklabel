@@ -1259,7 +1259,12 @@ impl App {
                     let mut found: Vec<Found> = chopshop_printer::usb::find()
                         .into_iter()
                         .map(|printer| {
-                            let model = chopshop_printer::usb::query_status(&printer.address)
+                            // Not over USB when it answers on the network.
+                            let model = crate::printer::network_status(&printer.address)
+                                .map_or_else(
+                                    || chopshop_printer::usb::query_status(&printer.address),
+                                    Ok,
+                                )
                                 .map_or_else(|_| "Brother QL".to_owned(), |status| {
                                     format!("Brother {}", status.model)
                                 });
