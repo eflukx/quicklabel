@@ -96,12 +96,13 @@ pub fn run(
                 .map(|host| start_link(host, &ctx))
                 .collect();
             let show_printers = settings.printers.is_empty();
+            let text = text.unwrap_or_else(|| settings.last_text.clone());
 
             Ok(Box::new(App {
                 settings,
                 printers,
                 chosen: None,
-                text: text.unwrap_or_default(),
+                text,
                 preview: None,
                 message: None,
                 printing: false,
@@ -178,6 +179,7 @@ impl App {
         if TextLabel::new(&self.text).is_empty() || self.printing {
             return;
         }
+        self.keep_text();
 
         if self.printers.is_empty() {
             let labels = self.render_all(self.media());
@@ -452,7 +454,7 @@ impl App {
     fn copies_stepper(&mut self, ui: &mut Ui) {
         let c = style::palette(ui.ctx());
         let hint = t(
-            "Number of labels (Ctrl+Up / Ctrl+Down). {n} in the text numbers them, {n+12} from 12.",
+            "Number of labels (Ctrl+Up / Ctrl+Down). {n} in the text numbers them, {n+12} from 13.",
         );
         egui::Frame::new()
             .fill(c.plate)
@@ -637,6 +639,14 @@ impl App {
             };
             ui.ctx().set_theme(theme);
             self.settings.theme = code.to_owned();
+            self.save();
+        }
+    }
+
+    /// Remembers the text for the next start.
+    fn keep_text(&mut self) {
+        if self.settings.last_text != self.text {
+            self.settings.last_text.clone_from(&self.text);
             self.save();
         }
     }
@@ -928,7 +938,15 @@ impl eframe::App for App {
                             .desired_width(f32::INFINITY);
                         let response = ui.add(field);
                         if !self.focused {
+                            // The last text, selected: typing replaces it, Ctrl+Enter prints it.
                             response.request_focus();
+                            let mut state =
+                                egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
+                            state.cursor.set_char_range(Some(CCursorRange::two(
+                                CCursor::new(0),
+                                CCursor::new(self.text.chars().count()),
+                            )));
+                            state.store(ui.ctx(), id);
                             self.focused = true;
                         }
                     });
@@ -968,7 +986,7 @@ impl eframe::App for App {
                             .color(c.muted),
                     )
                     .on_hover_text(t(
-                        "{n} becomes 1, 2, 3 … over the labels; {n+12} starts at 12",
+                        "{n} becomes 1, 2, 3 … over the labels; {n+12} starts at 13",
                     ));
                     ui.add_space(10.0);
                     style::shortcut(ui, &["Esc"], t("close"));
@@ -983,5 +1001,9 @@ impl eframe::App for App {
             });
 
         self.take_screenshot(&ctx);
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.keep_text();
     }
 }

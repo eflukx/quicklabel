@@ -1,10 +1,10 @@
 //! Numbered labels: `{n}` in the text becomes the label's number in a print run.
 //!
-//! How to use: `fill("Box {n}", 0)` is `Box 1`, `fill("Box {n}", 2)` is `Box 3`. `{n+12}` starts
-//! at 12 (12, 13, …); a start with leading zeros keeps its width: `{n+007}` gives 007, 008, ….
+//! How to use: `fill("Box {n}", 0)` is `Box 1`, `fill("Box {n}", 2)` is `Box 3`. `{n+12}` adds 12:
+//! 13, 14, …; an offset with leading zeros keeps its width: `{n+007}` gives 008, 009, ….
 //! Spaces inside the braces are allowed (`{n + 12}`). Anything else in braces stays as typed.
 
-/// `text` with every `{n}` / `{n+start}` replaced for the label `index` (0 for the first).
+/// `text` with every `{n}` / `{n+offset}` replaced for the label `index` (0 for the first).
 #[must_use]
 pub fn fill(text: &str, index: u16) -> String {
     let mut out = String::with_capacity(text.len());
@@ -41,13 +41,13 @@ fn number(inside: &str, index: u16) -> Option<String> {
     if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
         return None;
     }
-    let first: u64 = digits.parse().ok()?;
+    let offset: u64 = digits.parse().ok()?;
     let width = if digits.starts_with('0') {
         digits.len()
     } else {
         0
     };
-    Some(format!("{:0width$}", first + u64::from(index)))
+    Some(format!("{:0width$}", offset + u64::from(index) + 1))
 }
 
 #[cfg(test)]
@@ -62,12 +62,16 @@ mod tests {
     }
 
     #[test]
-    fn a_start_counts_from_there() {
-        assert_eq!(fill("Rack {n+12}", 0), "Rack 12");
-        assert_eq!(fill("Rack {n + 12}", 2), "Rack 14");
-        assert_eq!(fill("{n+007}", 0), "007");
-        assert_eq!(fill("{n+007}", 3), "010");
-        assert_eq!(fill("{n+0}", 0), "0");
+    fn an_offset_is_added() {
+        assert_eq!(fill("Rack {n+12}", 0), "Rack 13");
+        assert_eq!(fill("Rack {n + 12}", 2), "Rack 15");
+        assert_eq!(fill("{n+007}", 0), "008");
+        assert_eq!(fill("{n+007}", 2), "010");
+        assert_eq!(fill("{n+0}", 0), "1");
+        assert_eq!(fill("{n+00}", 0), "01");
+        assert_eq!(fill("{n+00}", 98), "99");
+        assert_eq!(fill("{n+00}", 99), "100");
+        assert_eq!(fill("{n+000}", 0), "001");
     }
 
     #[test]

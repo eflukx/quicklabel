@@ -16,6 +16,8 @@ pub struct Settings {
     pub language: String,
     /// `light` or `dark`; empty: as Windows is set.
     pub theme: String,
+    /// The text of the last run: shown selected at the next start.
+    pub last_text: String,
     /// How labels are laid out, per tape (the media id: `62`, `62x29`, `29`, …).
     pub layouts: BTreeMap<String, Layout>,
 }
