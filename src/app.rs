@@ -1096,6 +1096,11 @@ impl eframe::App for App {
                     ui.painter().rect_filled(bar, CornerRadius::ZERO, c.rule);
                     ui.add_space(6.0);
                     ui.label(RichText::new(t("Quick label")).font(style::semibold(21.0)));
+                    ui.label(
+                        RichText::new(concat!("v", env!("CARGO_PKG_VERSION")))
+                            .font(style::regular(12.5))
+                            .color(c.faint),
+                    );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
