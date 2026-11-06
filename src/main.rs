@@ -70,6 +70,11 @@ fn run_resident() {
     #[cfg(windows)]
     {
         let settings = settings::Settings::load();
+        chopshop_i18n::set_language(if settings.language.is_empty() {
+            settings::system_language()
+        } else {
+            chopshop_i18n::Language::from_code(&settings.language)
+        });
         if let Err(error) = resident::run(settings.hotkey()) {
             let log = settings::Settings::path().with_file_name("resident.log");
             let _ = std::fs::write(log, format!("{error}\n"));

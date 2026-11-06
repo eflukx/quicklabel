@@ -21,6 +21,7 @@ sys-locale = "0.3"
 # Resident mode: the hotkey held by a small background process (Windows only).
 [target.'cfg(windows)'.dependencies]
 global-hotkey = "0.9"
+tray-icon = "0.26"
 winit = "0.30"
 
 [lints]

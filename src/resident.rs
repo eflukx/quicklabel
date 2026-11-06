@@ -6,7 +6,9 @@
 //!
 //! Working principle: a shortcut's key is handled by Explorer, which takes seconds to start the
 //! program. The resident process registers the key itself (`global-hotkey`, a winit event loop
-//! without a window) and on a press starts the window, as fast as the Start menu does. The
+//! without a window) and on a press starts the window, as fast as the Start menu does. It shows
+//! a tray icon: a click opens the window, its menu stops the process (until the next sign-in)
+//! or switches resident mode off. The
 //! window and the resident each listen on a fixed local port: a second window tells the first
 //! to come forward and quits, a second resident quits, and the window stops the resident with
 //! "quit". Only 127.0.0.1: nothing outside the PC can reach them.
@@ -65,13 +67,18 @@ mod windows {
     use std::process::Command;
     use std::time::{Duration, Instant};
 
-    use chopshop_i18n::tf;
+    use chopshop_i18n::{t, tf};
     use global_hotkey::hotkey::HotKey;
     use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
     use winit::application::ApplicationHandler;
     use winit::event::WindowEvent;
     use winit::event_loop::{ActiveEventLoop, EventLoop};
     use winit::window::WindowId;
+
+    use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+    use tray_icon::{
+        Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
+    };
 
     use super::{RESIDENT_PORT, WINDOW_PORT, claim, is_running, send, serve};
 
@@ -83,11 +90,19 @@ mod windows {
     const RUN_NAME: &str = "Quick label";
 
     enum Wake {
-        HotKey,
+        /// The hotkey or a click on the tray icon: the window.
+        Open,
+        /// Stop until the next sign-in.
         Quit,
+        /// Resident mode off, then stop.
+        SwitchOff,
     }
 
-    struct Resident;
+    struct Resident {
+        hotkey: String,
+        /// Kept: dropping it removes the icon.
+        _tray: Option<TrayIcon>,
+    }
 
     impl ApplicationHandler<Wake> for Resident {
         fn resumed(&mut self, _event_loop: &ActiveEventLoop) {}
@@ -97,7 +112,7 @@ mod windows {
         fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Wake) {
             match event {
                 // The open window comes forward; else a new one starts.
-                Wake::HotKey => {
+                Wake::Open => {
                     if !send(WINDOW_PORT, "show")
                         && let Ok(exe) = std::env::current_exe()
                     {
@@ -105,6 +120,14 @@ mod windows {
                     }
                 }
                 Wake::Quit => event_loop.exit(),
+                Wake::SwitchOff => {
+                    let mut settings = crate::settings::Settings::load();
+                    settings.resident = false;
+                    let _ = settings.save();
+                    // Not running any more by then: the "quit" it sends finds nobody.
+                    let _ = disable(&self.hotkey);
+                    event_loop.exit();
+                }
             }
         }
     }
@@ -136,12 +159,70 @@ mod windows {
         let proxy = event_loop.create_proxy();
         GlobalHotKeyEvent::set_event_handler(Some(move |event: GlobalHotKeyEvent| {
             if event.state == HotKeyState::Pressed {
-                let _ = proxy.send_event(Wake::HotKey);
+                let _ = proxy.send_event(Wake::Open);
             }
         }));
 
+        // Without a tray icon (Explorer not there yet, say) the key still works.
+        let shown = crate::settings::Settings::load().hotkey_shown();
+        let tray = tray(&shown, &event_loop).ok();
         event_loop
-            .run_app(&mut Resident)
+            .run_app(&mut Resident {
+                hotkey: hotkey.to_owned(),
+                _tray: tray,
+            })
+            .map_err(|error| error.to_string())
+    }
+
+    /// The tray icon: a left click opens the window; the menu opens it, stops the process or
+    /// switches resident mode off.
+    fn tray(hotkey: &str, event_loop: &EventLoop<Wake>) -> Result<TrayIcon, String> {
+        let open = MenuItem::new(t("Open Quick label"), true, None);
+        let stop = MenuItem::new(t("Stop until the next sign-in"), true, None);
+        let off = MenuItem::new(t("Switch off staying ready"), true, None);
+        let menu = Menu::new();
+        menu.append_items(&[&open, &PredefinedMenuItem::separator(), &stop, &off])
+            .map_err(|error| error.to_string())?;
+
+        let (open, stop, off) = (open.id().clone(), stop.id().clone(), off.id().clone());
+        let proxy = event_loop.create_proxy();
+        MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
+            let wake = if event.id == open {
+                Wake::Open
+            } else if event.id == stop {
+                Wake::Quit
+            } else if event.id == off {
+                Wake::SwitchOff
+            } else {
+                return;
+            };
+            let _ = proxy.send_event(wake);
+        }));
+        let proxy = event_loop.create_proxy();
+        TrayIconEvent::set_event_handler(Some(move |event: TrayIconEvent| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                let _ = proxy.send_event(Wake::Open);
+            }
+        }));
+
+        let image = image::load_from_memory(include_bytes!("../assets/icon.png"))
+            .map_err(|error| error.to_string())?
+            .resize(32, 32, image::imageops::FilterType::Lanczos3)
+            .to_rgba8();
+        let (width, height) = image.dimensions();
+        let icon =
+            Icon::from_rgba(image.into_raw(), width, height).map_err(|error| error.to_string())?;
+        TrayIconBuilder::new()
+            .with_icon(icon)
+            .with_tooltip(tf("Quick label · {hotkey}", &[("hotkey", &hotkey)]))
+            .with_menu(Box::new(menu))
+            .with_menu_on_left_click(false)
+            .build()
             .map_err(|error| error.to_string())
     }
 

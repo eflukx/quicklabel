@@ -810,17 +810,7 @@ impl App {
     fn resident_section(&mut self, ui: &mut Ui) {
         let c = style::palette(ui.ctx());
         let hotkey = self.settings.hotkey().to_owned();
-        // CTRL+ALT+L as Ctrl+Alt+L.
-        let shown = hotkey
-            .split('+')
-            .map(|part| {
-                let mut chars = part.chars();
-                chars.next().map_or_else(String::new, |first| {
-                    first.to_string() + &chars.as_str().to_lowercase()
-                })
-            })
-            .collect::<Vec<_>>()
-            .join("+");
+        let shown = self.settings.hotkey_shown();
         ui.label(RichText::new(t("Hotkey")).font(style::semibold(19.0)));
         ui.label(
             RichText::new(tf(

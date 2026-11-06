@@ -29,7 +29,8 @@ Windows takes a few seconds for a shortcut's key. In Quick label: Settings → *
 the background**. A small process (`quicklabel --resident`, a few MB, idle) then holds
 Ctrl+Alt+L and starts with Windows; the window is there in about half a second. Switching it on
 takes the key off the Start menu shortcut; Windows may hold on to it until the next sign-in.
-Off: the process stops and the shortcut gets the key back.
+Off: the process stops and the shortcut gets the key back. While it runs, a tray icon: click to
+open Quick label; its menu stops it until the next sign-in or switches staying ready off.
 
 ## Install (Windows)
 

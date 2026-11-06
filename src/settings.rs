@@ -121,6 +121,21 @@ impl Settings {
         }
     }
 
+    /// The hotkey as people write it: `Ctrl+Alt+L`.
+    #[must_use]
+    pub fn hotkey_shown(&self) -> String {
+        self.hotkey()
+            .split('+')
+            .map(|part| {
+                let mut chars = part.chars();
+                chars.next().map_or_else(String::new, |first| {
+                    first.to_string() + &chars.as_str().to_lowercase()
+                })
+            })
+            .collect::<Vec<_>>()
+            .join("+")
+    }
+
     /// Where a label goes when there is no printer: a `labels` folder next to the settings.
     #[must_use]
     pub fn labels_dir() -> PathBuf {
