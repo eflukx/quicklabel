@@ -76,6 +76,3 @@
 "{host}: doesn't answer" = "{host}: antwoordt niet"
 "{hotkey} opens Quick label from anywhere. Windows itself takes a few seconds for it; ready in the background, it opens at once." = "{hotkey} opent Quick label vanuit elk programma. Windows zelf doet daar een paar seconden over; klaar op de achtergrond opent het meteen."
 "{n} becomes 1, 2, 3 … over the labels; {n+12} starts at 13" = "{n} wordt 1, 2, 3 … over de labels; {n+12} begint bij 13"
-"{width} mm tape" = "{width} mm tape"
-"{width} mm tape · {length} mm long" = "{width} mm tape · {length} mm lang"
-"{width} × {length} mm label" = "{width} × {length} mm label"

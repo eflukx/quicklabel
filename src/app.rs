@@ -406,17 +406,17 @@ impl App {
         } else {
             egui::vec2(across, along)
         };
-        let caption_height = 22.0;
+        // Room for the dimension lines: under the paper and right of it (and as much on the
+        // left, so the paper stays centred).
+        let (below, beside) = (26.0, 32.0);
         let room = tray.shrink(22.0);
         let room = egui::Rect::from_min_max(room.min + egui::vec2(0.0, 30.0), room.max);
-        let scale = (room.width() / paper_dots.x)
-            .min((room.height() - caption_height) / paper_dots.y)
+        let scale = ((room.width() - 2.0 * beside) / paper_dots.x)
+            .min((room.height() - below) / paper_dots.y)
             .min(0.6);
         let paper_size = paper_dots * scale;
-        let paper = egui::Rect::from_center_size(
-            room.center() - egui::vec2(0.0, caption_height / 2.0),
-            paper_size,
-        );
+        let paper =
+            egui::Rect::from_center_size(room.center() - egui::vec2(0.0, below / 2.0), paper_size);
         let corner = if continuous {
             1
         } else {
@@ -444,31 +444,42 @@ impl App {
             egui::Image::from_texture((texture.id(), print.size())).paint_at(ui, print);
         }
 
+        // The sizes as dimension lines: the tape's width across it, the label's length along
+        // it (none for an empty label on free tape: it has no length yet).
         let length_mm = if continuous {
-            (along / DOTS_PER_MM).round()
+            (label.is_empty() && length == Length::Free)
+                .then_some(())
+                .map_or_else(|| Some((along / DOTS_PER_MM).round()), |()| None)
         } else {
-            f32::from(media.length_mm)
+            Some(f32::from(media.length_mm))
         };
-        let caption = if label.is_empty() {
-            tf("{width} mm tape", &[("width", &media.width_mm)])
-        } else if continuous {
-            tf(
-                "{width} mm tape · {length} mm long",
-                &[("width", &media.width_mm), ("length", &length_mm)],
-            )
+        let width_mm = f32::from(media.width_mm);
+        let (horizontal, vertical) = if along_tape {
+            (length_mm, Some(width_mm))
         } else {
-            tf(
-                "{width} × {length} mm label",
-                &[("width", &media.width_mm), ("length", &length_mm)],
-            )
+            (Some(width_mm), length_mm)
         };
-        painter.text(
-            egui::pos2(paper.center().x, paper.bottom() + 10.0),
-            egui::Align2::CENTER_TOP,
-            caption,
-            style::regular(13.5),
-            c.muted,
-        );
+        let ink = c.muted;
+        if let Some(mm) = horizontal {
+            let y = paper.bottom() + 14.0;
+            dimension(
+                &painter,
+                [egui::pos2(paper.left(), y), egui::pos2(paper.right(), y)],
+                &format!("{mm} mm"),
+                ink,
+                c.tray,
+            );
+        }
+        if let Some(mm) = vertical {
+            let x = paper.right() + 16.0;
+            dimension(
+                &painter,
+                [egui::pos2(x, paper.top()), egui::pos2(x, paper.bottom())],
+                &format!("{mm} mm"),
+                ink,
+                c.tray,
+            );
+        }
 
         // The outcome, as a pill at the tray's foot.
         let pill = match &self.message {
@@ -574,27 +585,9 @@ impl App {
             changed.fill_lines = !layout.fill_lines;
         }
 
-        ui.add_space(14.0);
-        ui.label(
-            RichText::new(t("Cut"))
-                .font(style::regular(14.0))
-                .color(c.muted),
-        );
-        for (cut, name, hint) in [
-            (Cut::Each, t("each"), t("Cut after every label")),
-            (Cut::Batch, t("batch"), t("Cut once, after the last label")),
-            (Cut::Off, t("off"), t("Don't cut: tear off by hand")),
-        ] {
-            if style::chip(ui, name, layout.cut == cut, None)
-                .on_hover_text(hint)
-                .clicked()
-            {
-                changed.cut = cut;
-            }
-        }
-
-        if media.is_continuous() {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        // On the right, from the right: length (continuous tape only), then cut.
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if media.is_continuous() {
                 for times in LENGTHS.into_iter().rev() {
                     let name = if times == 0 {
                         t("free").to_owned()
@@ -624,8 +617,27 @@ impl App {
                         .font(style::regular(14.0))
                         .color(c.muted),
                 );
-            });
-        }
+                ui.add_space(12.0);
+            }
+
+            for (cut, name, hint) in [
+                (Cut::Off, t("off"), t("Don't cut: tear off by hand")),
+                (Cut::Batch, t("batch"), t("Cut once, after the last label")),
+                (Cut::Each, t("each"), t("Cut after every label")),
+            ] {
+                if style::chip(ui, name, layout.cut == cut, None)
+                    .on_hover_text(hint)
+                    .clicked()
+                {
+                    changed.cut = cut;
+                }
+            }
+            ui.label(
+                RichText::new(t("Cut"))
+                    .font(style::regular(14.0))
+                    .color(c.muted),
+            );
+        });
 
         if changed != layout {
             self.set_layout(media, changed);
@@ -1063,6 +1075,52 @@ fn switch_resident(on: bool, hotkey: &str) -> Result<(), String> {
     {
         let _ = (on, hotkey);
         Ok(())
+    }
+}
+
+/// A dimension line from `ends[0]` to `ends[1]` (horizontal or vertical) with end ticks and
+/// `text` in its middle, on the `background` so the line stops around it; vertical text reads
+/// upwards.
+fn dimension(
+    painter: &egui::Painter,
+    ends: [egui::Pos2; 2],
+    text: &str,
+    ink: Color32,
+    background: Color32,
+) {
+    let stroke = egui::Stroke::new(1.0, ink);
+    let vertical = (ends[1].x - ends[0].x).abs() < 0.5;
+    let tick = if vertical {
+        egui::vec2(4.0, 0.0)
+    } else {
+        egui::vec2(0.0, 4.0)
+    };
+    painter.line_segment(ends, stroke);
+    for end in ends {
+        painter.line_segment([end - tick, end + tick], stroke);
+    }
+
+    let galley = painter.layout_no_wrap(text.to_owned(), style::regular(12.5), ink);
+    let size = galley.size();
+    let middle = egui::pos2((ends[0].x + ends[1].x) / 2.0, (ends[0].y + ends[1].y) / 2.0);
+    if vertical {
+        painter.rect_filled(
+            egui::Rect::from_center_size(middle, egui::vec2(size.y, size.x + 8.0)),
+            CornerRadius::ZERO,
+            background,
+        );
+        // Turned a quarter anticlockwise about its top left: placed so its middle is `middle`.
+        let at = egui::pos2(middle.x - size.y / 2.0, middle.y + size.x / 2.0);
+        painter.add(
+            egui::epaint::TextShape::new(at, galley, ink).with_angle(-std::f32::consts::FRAC_PI_2),
+        );
+    } else {
+        painter.rect_filled(
+            egui::Rect::from_center_size(middle, egui::vec2(size.x + 8.0, size.y)),
+            CornerRadius::ZERO,
+            background,
+        );
+        painter.galley(middle - size / 2.0, galley, ink);
     }
 }
 
