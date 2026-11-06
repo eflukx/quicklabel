@@ -24,8 +24,9 @@ Type a few lines, press **Ctrl+Enter**: printed on the Brother QL label printer.
   text is the label's number from 1; `{n+12}` adds 12 (13, 14, …); `{n+007}` keeps the zeros (008, …).
 - The first time: Settings (top right) opens by itself; Search the network finds Brother QL
   printers (this PC's network and that of printers already set), or add the printer's address (for example `192.168.1.40`).
-  Several printers: click the one to print on. **USB**: a QL plugged in shows up in the search
-  as `usb:<serial>` (no Brother driver needed: Windows' own "USB Printing Support"; not with
+  Several printers: the printer chip under the label opens the list (automatic: the first
+  that is ready, or one of them). **USB**: a QL plugged in shows up in Settings by
+  itself, with Add, as `usb:<serial>` (no Brother driver needed: Windows' own "USB Printing Support"; not with
   WinUSB/libusb from Zadig). **HQ** per printer (on by default): high
   resolution, 600 dpi along the tape, on models that have it (QL-710W, 720NW, 800 series);
   a little slower.

@@ -180,7 +180,12 @@ fn print_once(address: &str, text: &str) -> Result<String, String> {
     }
     let lines =
         raster::raster_lines_at(&bitmap, media, resolution).map_err(|error| error.to_string())?;
-    let bytes = job::pages_bytes(&[&lines], media, layout.cut.job(), resolution);
+    let compression = if status.model.compression() {
+        job::Compression::Tiff
+    } else {
+        job::Compression::None
+    };
+    let bytes = job::pages_bytes(&[&lines], media, layout.cut.job(), resolution, compression);
     // QUICKLABEL_JOB: the job's bytes to a file instead of the printer.
     if let Some(path) = dump {
         std::fs::write(&path, &bytes).map_err(|error| error.to_string())?;

@@ -174,7 +174,13 @@ fn worker(
                 .map_err(|error| error.to_string())
                 .and_then(|pages| {
                     let pages: Vec<&[_]> = pages.iter().map(Vec::as_slice).collect();
-                    let bytes = job::pages_bytes(&pages, media, cut, resolution);
+                    // TIFF on models that take it: a fraction of the data.
+                    let compression = if status.model.compression() {
+                        job::Compression::Tiff
+                    } else {
+                        job::Compression::None
+                    };
+                    let bytes = job::pages_bytes(&pages, media, cut, resolution, compression);
                     if usb::is_usb(host) {
                         usb::send_job(host, &bytes)
                     } else {

@@ -70,6 +70,8 @@ struct App {
     resident_error: Option<String>,
     /// The printer search running, and its outcome: the networks searched and what answered.
     search: Option<std::sync::mpsc::Receiver<Vec<Found>>>,
+    /// USB printers plugged in, and when that was looked at.
+    usb_found: Option<(Instant, Vec<String>)>,
     searched: Option<(Vec<String>, Vec<Found>)>,
     close_at: Option<Instant>,
     focused: bool,
@@ -154,6 +156,7 @@ pub fn run(
                 resident_running: None,
                 resident_error: None,
                 search: None,
+                usb_found: None,
                 searched: None,
                 close_at: None,
                 focused: false,
@@ -909,7 +912,8 @@ impl App {
         }
     }
 
-    /// The printers as chips with a status dot: the one used is green; a click picks another.
+    /// The printer used, as a chip with its status dot; with several, a click opens the list:
+    /// automatic (the first ready) or one of them.
     fn printer_line(&mut self, ui: &mut Ui) {
         let c = style::palette(ui.ctx());
         if self.printers.is_empty() {
@@ -923,15 +927,42 @@ impl App {
         }
 
         let target = self.target().map(|(index, _)| index);
-        ui.horizontal_wrapped(|ui| {
+        let shown = target
+            .or(self.chosen.filter(|&index| index < self.printers.len()))
+            .unwrap_or(0);
+        let link = &self.printers[shown];
+        let (text, dot) = describe(&link.host, &link.state(), c);
+        if self.printers.len() == 1 {
+            style::chip(ui, &text, target.is_some(), Some(dot));
+            return;
+        }
+
+        let chip = style::menu_chip(ui, &text, target.is_some(), Some(dot))
+            .on_hover_text(t("Pick the printer"));
+        egui::Popup::menu(&chip).show(|ui| {
+            ui.set_min_width(chip.rect.width().max(260.0));
+            let automatic =
+                RichText::new(t("Automatic: the first that is ready")).font(style::medium(14.0));
+            if ui
+                .selectable_label(self.chosen.is_none(), automatic)
+                .clicked()
+            {
+                self.chosen = None;
+            }
+            ui.separator();
             for index in 0..self.printers.len() {
                 let link = &self.printers[index];
-                let state = link.state();
-                let (text, dot) = describe(&link.host, &state, c);
-                if style::chip(ui, &text, target == Some(index), Some(dot))
-                    .on_hover_text(t("Print on this printer"))
-                    .clicked()
-                {
+                let (text, dot) = describe(&link.host, &link.state(), c);
+                let picked = self.chosen == Some(index);
+                let row = ui
+                    .horizontal(|ui| {
+                        let (spot, _) =
+                            ui.allocate_exact_size(egui::Vec2::splat(10.0), egui::Sense::hover());
+                        ui.painter().circle_filled(spot.center(), 4.5, dot);
+                        ui.selectable_label(picked, RichText::new(&text).font(style::medium(14.0)))
+                    })
+                    .inner;
+                if row.clicked() {
                     self.chosen = Some(index);
                 }
             }
@@ -1019,7 +1050,7 @@ impl App {
                 });
                 ui.label(
                     RichText::new(t(
-                        "Brother QL printers on the network, by address. A label goes to the first that is ready with tape in; click one below the label to pick it.",
+                        "Brother QL printers on the network (by address) or on USB. A label goes to the first that is ready with tape in; click one below the label to pick it.",
                     ))
                     .font(style::regular(14.0))
                     .color(c.muted),
@@ -1075,6 +1106,9 @@ impl App {
                     self.settings.printers.remove(index);
                     self.printers.remove(index);
                     self.chosen = None;
+                    changed = true;
+                }
+                if self.usb_section(ui, &ctx) {
                     changed = true;
                 }
 
@@ -1136,6 +1170,49 @@ impl App {
         if changed {
             self.save();
         }
+    }
+
+    /// Brother printers plugged in on USB and not added yet, each with Add (looked for every few
+    /// seconds while the card is open); whether one was added.
+    fn usb_section(&mut self, ui: &mut Ui, ctx: &egui::Context) -> bool {
+        let c = style::palette(ui.ctx());
+        let stale = self
+            .usb_found
+            .as_ref()
+            .is_none_or(|(at, _)| at.elapsed() > Duration::from_secs(3));
+        if stale {
+            let found = chopshop_printer::usb::find()
+                .into_iter()
+                .map(|printer| printer.address)
+                .collect();
+            self.usb_found = Some((Instant::now(), found));
+            ctx.request_repaint_after(Duration::from_secs(3));
+        }
+        let mut add = None;
+        for address in self.usb_found.iter().flat_map(|(_, found)| found) {
+            if self.settings.printers.contains(address) {
+                continue;
+            }
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(address).font(style::medium(16.0)));
+                ui.label(
+                    RichText::new(t("Brother QL on USB"))
+                        .font(style::regular(14.0))
+                        .color(c.muted),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button(t("Add")).clicked() {
+                        add = Some(address.clone());
+                    }
+                });
+            });
+        }
+        let Some(address) = add else {
+            return false;
+        };
+        self.printers.push(start_link(&address, ctx));
+        self.settings.printers.push(address);
+        true
     }
 
     /// The printer search: a button, then the Brother QL printers found with Add; whether one

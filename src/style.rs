@@ -198,14 +198,26 @@ fn apply(style: &mut egui::Style, c: &Palette) {
 
 /// A chip: green when on, a plate when off, with a status dot when given; takes clicks.
 pub fn chip(ui: &mut Ui, text: &str, on: bool, dot: Option<Color32>) -> Response {
-    chip_with(ui, text, on, |ui, ink, fill| {
-        if let Some(dot) = dot {
-            let (rect, _) = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover());
-            let ring = if on { ink } else { fill };
-            ui.painter()
-                .circle(rect.center(), 4.0, dot, Stroke::new(1.0, ring));
-        }
+    chip_with(ui, text, on, false, |ui, ink, fill| {
+        status_dot(ui, on, dot, ink, fill)
     })
+}
+
+/// A chip that opens a menu: as [`chip`], with a small triangle after the text.
+pub fn menu_chip(ui: &mut Ui, text: &str, on: bool, dot: Option<Color32>) -> Response {
+    chip_with(ui, text, on, true, |ui, ink, fill| {
+        status_dot(ui, on, dot, ink, fill)
+    })
+}
+
+/// A chip's status dot, ringed in the chip's ink (on) or fill (off).
+fn status_dot(ui: &mut Ui, on: bool, dot: Option<Color32>, ink: Color32, fill: Color32) {
+    if let Some(dot) = dot {
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover());
+        let ring = if on { ink } else { fill };
+        ui.painter()
+            .circle(rect.center(), 4.0, dot, Stroke::new(1.0, ring));
+    }
 }
 
 /// The chip of the text's direction, with a small label and an upright A in front (as
@@ -213,7 +225,7 @@ pub fn chip(ui: &mut Ui, text: &str, on: bool, dot: Option<Color32>) -> Response
 /// a closed outline with round corners; continuous tape a strip whose edges run on, with dashed
 /// cuts where the label ends.
 pub fn direction_chip(ui: &mut Ui, text: &str, sideways: bool, continuous: bool) -> Response {
-    chip_with(ui, text, true, |ui, ink, _| {
+    chip_with(ui, text, true, false, |ui, ink, _| {
         let (rect, _) = ui.allocate_exact_size(egui::vec2(22.0, 18.0), Sense::hover());
         let painter = ui.painter();
         let stroke = Stroke::new(1.3, ink);
@@ -326,6 +338,7 @@ fn chip_with(
     ui: &mut Ui,
     text: &str,
     on: bool,
+    caret: bool,
     leading: impl FnOnce(&mut Ui, Color32, Color32),
 ) -> Response {
     let c = palette(ui.ctx());
@@ -343,6 +356,20 @@ fn chip_with(
             ui.horizontal(|ui| {
                 leading(ui, colour, fill);
                 ui.label(egui::RichText::new(text).font(medium(14.0)).color(colour));
+                if caret {
+                    // Drawn: the fonts have no ▾.
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(9.0, 8.0), Sense::hover());
+                    let middle = rect.center();
+                    ui.painter().add(egui::Shape::convex_polygon(
+                        vec![
+                            middle + Vec2::new(-4.0, -2.0),
+                            middle + Vec2::new(4.0, -2.0),
+                            middle + Vec2::new(0.0, 2.5),
+                        ],
+                        colour,
+                        Stroke::NONE,
+                    ));
+                }
             });
         })
         .response;
