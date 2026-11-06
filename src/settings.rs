@@ -24,6 +24,10 @@ pub struct Settings {
     pub resident: bool,
     /// The hotkey, as Windows writes it (`CTRL+ALT+L`); empty: Ctrl+Alt+L.
     pub hotkey: String,
+    /// The typeface of the labels (`barlow`, `roboto`, `serif`); empty: Barlow.
+    pub typeface: String,
+    /// Per printer address: how it prints.
+    pub printer_options: BTreeMap<String, PrinterOptions>,
     /// How labels are laid out, per tape (the media id: `62`, `62x29`, `29`, …).
     pub layouts: BTreeMap<String, Layout>,
 }
@@ -40,6 +44,22 @@ pub struct Layout {
     pub cut: Cut,
     /// Every line as large as fills the width, each its own size.
     pub fill_lines: bool,
+}
+
+/// How one printer prints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PrinterOptions {
+    /// 600 dpi along the tape, when the model has it: sharper, a little slower.
+    pub high_resolution: bool,
+}
+
+impl Default for PrinterOptions {
+    fn default() -> Self {
+        Self {
+            high_resolution: true,
+        }
+    }
 }
 
 /// Where the cutter cuts: after each label, once after the batch, or not.
@@ -79,6 +99,18 @@ impl Default for Layout {
 }
 
 impl Settings {
+    /// How the printer at `host` prints.
+    #[must_use]
+    pub fn printer(&self, host: &str) -> PrinterOptions {
+        self.printer_options.get(host).copied().unwrap_or_default()
+    }
+
+    /// The labels' typeface.
+    #[must_use]
+    pub fn typeface(&self) -> chopshop_label::Typeface {
+        chopshop_label::Typeface::from_code(&self.typeface)
+    }
+
     /// Where they are kept: `QUICKLABEL_SETTINGS`, else `%APPDATA%\iotta\quicklabel.json`, else
     /// `~/.config/iotta/quicklabel.json`.
     #[must_use]

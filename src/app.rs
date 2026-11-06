@@ -4,8 +4,9 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use chopshop_i18n::{Language, t, tf};
-use chopshop_label::{Length, Run, TextLabel};
+use chopshop_label::{Length, Run, TextLabel, Typeface};
 use chopshop_printer::Media;
+use chopshop_printer::job::Resolution;
 use chopshop_printer::net::Found;
 use egui::text::{CCursor, CCursorRange};
 use egui::{Color32, CornerRadius, Key, Modifiers, RichText, Ui};
@@ -211,19 +212,34 @@ impl App {
     }
 
     /// The raster of label `index` of the run (`{n}` filled in).
-    fn render(&self, media: &Media, index: u16) -> chopshop_label::Bitmap {
+    fn render(&self, media: &Media, index: u16, resolution: Resolution) -> chopshop_label::Bitmap {
         let layout = self.layout(media);
         let (length, run) = shape(media, layout);
-        TextLabel::new(&numbering::fill(&self.text, index))
+        let label = TextLabel::new(&numbering::fill(&self.text, index))
             .fill_lines(layout.fill_lines)
-            .render(u32::from(media.print_pins), length, run)
+            .typeface(self.settings.typeface());
+        let across = u32::from(media.print_pins);
+        match resolution {
+            Resolution::Normal => label.render(across, length, run),
+            Resolution::High => label.render_fine(across, length, run),
+        }
     }
 
     /// Every label of the run.
-    fn render_all(&self, media: &Media) -> Vec<chopshop_label::Bitmap> {
+    fn render_all(&self, media: &Media, resolution: Resolution) -> Vec<chopshop_label::Bitmap> {
         (0..self.copies)
-            .map(|index| self.render(media, index))
+            .map(|index| self.render(media, index, resolution))
             .collect()
+    }
+
+    /// The printer `index`'s resolution: high when set (the default) and its model has it.
+    fn resolution(&self, index: usize) -> Resolution {
+        let link = &self.printers[index];
+        if self.settings.printer(&link.host).high_resolution && link.has_high_resolution() {
+            Resolution::High
+        } else {
+            Resolution::Normal
+        }
     }
 
     fn print(&mut self) {
@@ -233,7 +249,7 @@ impl App {
         self.keep_text();
 
         if self.printers.is_empty() {
-            let labels = self.render_all(self.media());
+            let labels = self.render_all(self.media(), Resolution::Normal);
             let dir = Settings::labels_dir();
             let stamp = jiff::Zoned::now().strftime("%Y-%m-%d_%H.%M.%S").to_string();
             let mut saved = std::fs::create_dir_all(&dir)
@@ -264,9 +280,10 @@ impl App {
             self.message = Some(Err(t("No printer ready with tape loaded").to_owned()));
             return;
         };
-        let labels = self.render_all(media);
+        let resolution = self.resolution(index);
+        let labels = self.render_all(media, resolution);
         let cut = self.layout(media).cut.job();
-        self.printers[index].print(labels, media, cut);
+        self.printers[index].print(labels, media, cut, resolution);
         self.printing = true;
         self.message = None;
     }
@@ -448,9 +465,12 @@ impl App {
         let c = style::palette(ui.ctx());
         let media = self.media();
         let layout = self.layout(media);
-        let label = TextLabel::new(&numbering::fill(&self.text, 0)).fill_lines(layout.fill_lines);
+        let typeface = self.settings.typeface();
+        let label = TextLabel::new(&numbering::fill(&self.text, 0))
+            .fill_lines(layout.fill_lines)
+            .typeface(typeface);
         let (length, run) = shape(media, layout);
-        let key = format!("{}|{layout:?}|{}", media.id, self.text);
+        let key = format!("{}|{layout:?}|{typeface:?}|{}", media.id, self.text);
         if self
             .preview
             .as_ref()
@@ -768,6 +788,30 @@ impl App {
             });
     }
 
+    /// The typeface: a drop-down of the three.
+    fn typeface_menu(&mut self, ui: &mut Ui) {
+        let current = self.settings.typeface();
+        let mut chosen = current;
+        egui::ComboBox::from_id_salt("typeface")
+            .selected_text(RichText::new(current.name()).font(style::medium(14.0)))
+            .width(78.0)
+            .show_ui(ui, |ui| {
+                for typeface in Typeface::ALL {
+                    ui.selectable_value(
+                        &mut chosen,
+                        typeface,
+                        RichText::new(typeface.name()).font(style::medium(15.0)),
+                    );
+                }
+            })
+            .response
+            .on_hover_text(t("Typeface of the label"));
+        if chosen != current {
+            self.settings.typeface = chosen.code().to_owned();
+            self.save();
+        }
+    }
+
     /// Over the tray: lengthwise or sideways, the cut, and for continuous tape the longest
     /// label.
     fn layout_bar(&mut self, ui: &mut Ui, tray: egui::Rect, media: &'static Media, layout: Layout) {
@@ -1002,6 +1046,25 @@ impl App {
                                 .clicked()
                             {
                                 remove = Some(index);
+                            }
+                            let options = self
+                                .settings
+                                .printer_options
+                                .entry(link.host.clone())
+                                .or_default();
+                            let hint = if link.has_high_resolution()
+                                || !matches!(link.state(), State::Online { .. })
+                            {
+                                t("High resolution: 600 dpi along the tape, sharper and a little slower")
+                            } else {
+                                t("High resolution: this model doesn't have it, it prints at 300 dpi")
+                            };
+                            if style::chip(ui, "HQ", options.high_resolution, None)
+                                .on_hover_text(hint)
+                                .clicked()
+                            {
+                                options.high_resolution = !options.high_resolution;
+                                changed = true;
                             }
                         });
                     });
@@ -1541,6 +1604,9 @@ impl eframe::App for App {
                     ));
                     ui.add_space(10.0);
                     style::shortcut(ui, &["Esc"], t("close"));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        self.typeface_menu(ui);
+                    });
                 });
                 ui.add_space(10.0);
 

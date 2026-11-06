@@ -18,11 +18,15 @@ Type a few lines, press **Ctrl+Enter**: printed on the Brother QL label printer.
   they shrink to fit the height. Off: one size for all lines.
 - Cut: after each label (default), once after the batch, or off.
 - Direction, fill, length and cut are kept per tape size.
+- Typeface (right of the hints under the text): Barlow (ours, narrow), Roboto or Serif (Source
+  Serif 4); one for the whole label, remembered. Roboto and Serif have real italics.
 - Several labels at once: − n + next to Print (Ctrl+Up / Ctrl+Down; Ctrl+N or a click on the number to type it, Enter or Esc back), one job. `{n}` in the
   text is the label's number from 1; `{n+12}` adds 12 (13, 14, …); `{n+007}` keeps the zeros (008, …).
 - The first time: Settings (top right) opens by itself; Search the network finds Brother QL
   printers (this PC's network and that of printers already set), or add the printer's address (for example `192.168.1.40`).
-  Several printers: click the one to print on.
+  Several printers: click the one to print on. **HQ** per printer (on by default): high
+  resolution, 600 dpi along the tape, on models that have it (QL-710W, 720NW, 800 series);
+  a little slower.
 - English or Dutch (the EN | NL switch, top right; at first the system's language). Light or dark as
   Windows is set, or by the moon / sun button (remembered).
 

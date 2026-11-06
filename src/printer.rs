@@ -40,12 +40,15 @@ impl State {
     }
 }
 
+/// Labels (raster bitmaps) for a medium, cut and at a resolution: one job.
+type Job = (Vec<Bitmap>, &'static Media, job::Cut, job::Resolution);
+
 /// A link to one printer.
 pub struct Link {
     /// Its address.
     pub host: String,
     state: Arc<Mutex<State>>,
-    jobs: Sender<(Vec<Bitmap>, &'static Media, job::Cut)>,
+    jobs: Sender<Job>,
     results: Receiver<Result<String, String>>,
 }
 
@@ -83,9 +86,22 @@ impl Link {
             .unwrap_or(State::Checking)
     }
 
-    /// Queues labels (raster bitmaps) for `media`, as one job, cut as `cut` says.
-    pub fn print(&self, labels: Vec<Bitmap>, media: &'static Media, cut: job::Cut) {
-        let _ = self.jobs.send((labels, media, cut));
+    /// Queues labels (raster bitmaps) for `media`, as one job, cut as `cut` says, drawn at
+    /// `resolution`.
+    pub fn print(
+        &self,
+        labels: Vec<Bitmap>,
+        media: &'static Media,
+        cut: job::Cut,
+        resolution: job::Resolution,
+    ) {
+        let _ = self.jobs.send((labels, media, cut, resolution));
+    }
+
+    /// Whether its model prints in high resolution (as far as known now).
+    #[must_use]
+    pub fn has_high_resolution(&self) -> bool {
+        matches!(self.state(), State::Online { status, .. } if status.model.high_resolution())
     }
 
     /// Print results since the last call: the printer's name, or why not.
@@ -108,7 +124,7 @@ fn read_state(host: &str) -> State {
 fn worker(
     host: &str,
     state: &Mutex<State>,
-    jobs: &Receiver<(Vec<Bitmap>, &'static Media, job::Cut)>,
+    jobs: &Receiver<Job>,
     results: &Sender<Result<String, String>>,
     wake: &dyn Fn(),
 ) {
@@ -125,7 +141,7 @@ fn worker(
             publish(read_state(host));
             next_poll = Instant::now() + POLL;
         }
-        let (labels, media, cut) =
+        let (labels, media, cut, resolution) =
             match jobs.recv_timeout(next_poll.saturating_duration_since(Instant::now())) {
                 Ok(job) => job,
                 Err(RecvTimeoutError::Timeout) => continue,
@@ -141,12 +157,12 @@ fn worker(
                 name,
             } if status.has_media(media) && status.is_ready() => labels
                 .iter()
-                .map(|bitmap| raster::raster_lines(bitmap, media))
+                .map(|bitmap| raster::raster_lines_at(bitmap, media, resolution))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|error| error.to_string())
                 .and_then(|pages| {
                     let pages: Vec<&[_]> = pages.iter().map(Vec::as_slice).collect();
-                    net::send_job(host, &job::pages_bytes(&pages, media, cut))
+                    net::send_job(host, &job::pages_bytes(&pages, media, cut, resolution))
                         .map_err(|error| error.to_string())
                 })
                 .map(|()| {
