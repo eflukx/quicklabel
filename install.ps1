@@ -29,13 +29,21 @@ $programs = [Environment]::GetFolderPath("Programs")
 # An earlier shortcut to ChopShop's quick mode, replaced by this one.
 Remove-Item -ErrorAction SilentlyContinue (Join-Path $programs "ChopShop label.lnk")
 
+# A new shortcut file, not an update of the old one: Windows caches a shortcut's icon, and an
+# old one (from before the exe had its icon) would stay.
+$link = Join-Path $programs "Quick label.lnk"
+Remove-Item -ErrorAction SilentlyContinue $link
+
 $shell = New-Object -ComObject WScript.Shell
-$shortcut = $shell.CreateShortcut((Join-Path $programs "Quick label.lnk"))
+$shortcut = $shell.CreateShortcut($link)
 $shortcut.TargetPath = $exe
 $shortcut.WorkingDirectory = $dir
 $shortcut.Hotkey = $Hotkey
 $shortcut.Description = "Type a label, Ctrl+Enter prints it"
 $shortcut.IconLocation = "$exe,0"
 $shortcut.Save()
+
+# Have Explorer reload its icon cache, so Start shows the new icon now.
+Start-Process -NoNewWindow -Wait -ErrorAction SilentlyContinue "ie4uinit.exe" "-show"
 
 Write-Output "Quick label installed in $dir; $Hotkey starts it."
