@@ -1,9 +1,9 @@
 //! Quick label: type a few lines, Ctrl+Enter prints them on a Brother QL label printer.
 //!
-//! How to use: start `quicklabel` (on Windows under a hotkey: `install.ps1` puts it under
-//! Ctrl+Alt+L). Type; Enter starts a new line; `**bold**`, `*italic*`; Ctrl+D inserts the date,
+//! How to use: start `quicklabel` (`install.ps1` puts it in the Start menu; Settings: resident
+//! mode puts it under Ctrl+Alt+L). Type; Enter starts a new line; `**bold**`, `*italic*`; Ctrl+D inserts the date,
 //! Ctrl+T the time; Ctrl+R turns the text; Ctrl+Up/Down sets the number of labels, `{n}` numbers
-//! them (`{n+12}` from 13); Ctrl+Enter prints and closes; Esc closes. The first time, add the printer's
+//! them (`{n+12}` from 13); Ctrl+Enter prints; Esc closes. The first time, add the printer's
 //! address under Printers.
 //!
 //! Working principle: one small window. The text is laid out for the tape the printer reports

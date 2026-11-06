@@ -18,6 +18,8 @@ pub struct Settings {
     pub theme: String,
     /// The text of the last run: shown selected at the next start.
     pub last_text: String,
+    /// Close the window after a label printed; else it stays open for the next one.
+    pub close_after_print: bool,
     /// Resident mode: a background process holds the hotkey (Windows).
     pub resident: bool,
     /// The hotkey, as Windows writes it (`CTRL+ALT+L`); empty: Ctrl+Alt+L.

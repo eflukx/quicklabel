@@ -20,6 +20,10 @@ const DEFAULT_MEDIA: &str = "62";
 /// Dots per millimetre at 300 dpi.
 const DOTS_PER_MM: f32 = 300.0 / 25.4;
 
+/// How long a success message shows before it fades (in [`MESSAGE_FADE`]).
+const MESSAGE_SHOWN: Duration = Duration::from_secs(5);
+const MESSAGE_FADE: Duration = Duration::from_millis(600);
+
 /// Feed before and after a label on continuous tape, in dots.
 const FEED_DOTS: u32 = 35;
 
@@ -50,6 +54,8 @@ struct App {
     text: String,
     preview: Option<Preview>,
     message: Option<Result<String, String>>,
+    /// The message last seen and since when: a success fades after [`MESSAGE_SHOWN`].
+    message_since: Option<(Result<String, String>, Instant)>,
     printing: bool,
     /// How many labels Print makes; back to 1 each start.
     copies: u16,
@@ -79,8 +85,7 @@ pub fn run(
         .with_title("Quick label")
         .with_icon(std::sync::Arc::new(style::window_icon()))
         .with_inner_size([680.0, 600.0])
-        .with_min_inner_size([620.0, 440.0])
-        .with_always_on_top();
+        .with_min_inner_size([620.0, 440.0]);
     let native = eframe::NativeOptions {
         viewport,
         centered: true,
@@ -134,6 +139,7 @@ pub fn run(
                 text,
                 preview: None,
                 message: None,
+                message_since: None,
                 printing: false,
                 copies: 1,
                 resident_running: None,
@@ -390,7 +396,9 @@ impl App {
                         } else {
                             tf("Printed on {printer}", &[("printer", &printer)])
                         }));
-                        self.close_at = Some(Instant::now() + Duration::from_millis(600));
+                        if self.settings.close_after_print {
+                            self.close_at = Some(Instant::now() + Duration::from_millis(600));
+                        }
                     }
                     Err(reason) => self.message = Some(Err(reason)),
                 }
@@ -470,7 +478,8 @@ impl App {
         // As large as the tray allows, but never a dot larger than a screen pixel.
         let pixels_per_point = ui.ctx().pixels_per_point();
         let room = tray.shrink(14.0);
-        let room = egui::Rect::from_min_max(room.min + egui::vec2(0.0, 34.0), room.max);
+        // Under the layout bar, with some air.
+        let room = egui::Rect::from_min_max(room.min + egui::vec2(0.0, 46.0), room.max);
         let scale = ((room.width() - 2.0 * beside) / paper_dots.x)
             .min((room.height() - below) / paper_dots.y)
             .min(1.0 / pixels_per_point);
@@ -579,24 +588,76 @@ impl App {
             );
         }
 
-        // The outcome, as a pill at the tray's foot.
+        // The outcome, as a pill at the tray's foot; a success fades after a few seconds.
+        let opacity = self.message_opacity(ui.ctx());
         let pill = match &self.message {
-            Some(Ok(text)) => Some((format!("✔  {text}"), c.green, c.green_ink)),
-            Some(Err(text)) => Some((text.clone(), c.alarm, Color32::WHITE)),
-            None if self.printing => Some((t("Printing…").to_owned(), c.plate, c.text)),
+            Some(Ok(text)) if opacity > 0.0 => Some((text.clone(), c.green, c.green_ink, true)),
+            Some(Ok(_)) => None,
+            Some(Err(text)) => Some((text.clone(), c.alarm, Color32::WHITE, false)),
+            None if self.printing => Some((t("Printing…").to_owned(), c.plate, c.text, false)),
             None => None,
         };
-        if let Some((text, fill, colour)) = pill {
+        if let Some((text, fill, colour, check)) = pill {
+            let (fill, colour) = (fill.gamma_multiply(opacity), colour.gamma_multiply(opacity));
             let galley = painter.layout(text, style::medium(15.0), colour, tray.width() - 60.0);
-            let size = galley.size() + egui::vec2(28.0, 12.0);
+            let mark = if check { 20.0 } else { 0.0 };
+            let size = galley.size() + egui::vec2(28.0 + mark, 12.0);
             let rect = egui::Rect::from_center_size(
                 egui::pos2(tray.center().x, tray.bottom() - 12.0 - size.y / 2.0),
                 size,
             );
+            let shadow = egui::Shadow {
+                color: shadow.color.gamma_multiply(opacity),
+                ..shadow
+            };
             painter.add(shadow.as_shape(rect, CornerRadius::same(16)));
             painter.rect_filled(rect, CornerRadius::same(16), fill);
-            painter.galley(rect.min + egui::vec2(14.0, 6.0), galley, colour);
+            if check {
+                // Drawn: the font has no check mark.
+                let at = egui::pos2(rect.left() + 15.0, rect.center().y);
+                painter.line(
+                    vec![
+                        at + egui::vec2(0.0, 0.5),
+                        at + egui::vec2(4.0, 4.5),
+                        at + egui::vec2(11.0, -4.5),
+                    ],
+                    egui::Stroke::new(2.2, colour),
+                );
+            }
+            painter.galley(rect.min + egui::vec2(14.0 + mark, 6.0), galley, colour);
         }
+    }
+
+    /// How visible the message is: 1, fading to 0 from [`MESSAGE_SHOWN`] after a success
+    /// appeared. An error stays.
+    fn message_opacity(&mut self, ctx: &egui::Context) -> f32 {
+        let Some(message) = &self.message else {
+            self.message_since = None;
+            return 1.0;
+        };
+        if self
+            .message_since
+            .as_ref()
+            .is_none_or(|(seen, _)| seen != message)
+        {
+            self.message_since = Some((message.clone(), Instant::now()));
+        }
+        if message.is_err() {
+            return 1.0;
+        }
+        let age = self
+            .message_since
+            .as_ref()
+            .map_or(Duration::ZERO, |(_, since)| since.elapsed());
+        let Some(fading) = age.checked_sub(MESSAGE_SHOWN) else {
+            ctx.request_repaint_after(MESSAGE_SHOWN - age);
+            return 1.0;
+        };
+        if fading >= MESSAGE_FADE {
+            return 0.0;
+        }
+        ctx.request_repaint();
+        1.0 - fading.as_secs_f32() / MESSAGE_FADE.as_secs_f32()
     }
 
     /// How many labels: − n +, Ctrl+Up / Ctrl+Down.
@@ -928,6 +989,18 @@ impl App {
                     changed = true;
                 }
 
+                ui.add_space(14.0);
+                if ui
+                    .checkbox(
+                        &mut self.settings.close_after_print,
+                        RichText::new(t("Close the window after printing"))
+                            .font(style::medium(16.0)),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
+
                 if cfg!(windows) {
                     ui.add_space(18.0);
                     self.resident_section(ui);
@@ -1225,12 +1298,21 @@ fn dimension(
 /// A printer's chip text and status dot.
 fn describe(host: &str, state: &State, c: &style::Palette) -> (String, Color32) {
     match state {
-        State::Online { status, name } => (
-            format!(
-                "{} · {}",
-                name.clone().unwrap_or_else(|| host.to_owned()),
-                status.media_description()
-            ),
+        State::Online {
+            status,
+            model,
+            name,
+        } => (
+            {
+                // Its own name first, then the model without "Brother": both, when it has a
+                // name.
+                let model = model.as_deref().unwrap_or(host);
+                let printer = match name {
+                    Some(name) => format!("{name} · {}", model.trim_start_matches("Brother ")),
+                    None => model.to_owned(),
+                };
+                format!("{printer} · {}", status.media_description())
+            },
             if state.ready_media().is_some() {
                 c.accent
             } else {

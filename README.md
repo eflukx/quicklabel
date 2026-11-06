@@ -8,7 +8,7 @@ Type a few lines, press **Ctrl+Enter**: printed on the Brother QL label printer.
   selection or take them off. `/` brings you back to the text from anywhere in the window.
 - Copy and paste work with other programs.
 - Ctrl+D inserts today's date, Ctrl+T the time.
-- Ctrl+Enter prints and closes; Esc closes.
+- Ctrl+Enter prints, the window stays open (Settings: close after printing); Esc closes.
 - The text is as large as it fits: more lines, smaller letters. The tape is the one the printer
   reports.
 - Lengthwise (along the label's long side) or Sideways (Ctrl+R). On continuous tape the label
@@ -38,7 +38,8 @@ open Quick label; its menu stops it until the next sign-in or switches staying r
 ## Install (Windows)
 
 Put `quicklabel.exe` and `install.ps1` in one folder and run `install.ps1` (right click, Run
-with PowerShell). Then **Ctrl+Alt+L** opens Quick label from anywhere. One file, nothing else
+with PowerShell): it copies the exe and puts Quick label in the Start menu. The hotkey: Settings
+→ **Stay ready in the background** (above). One file, nothing else
 needed: the fonts and texts are inside the exe. Settings: `%APPDATA%\iotta\quicklabel.json`.
 
 ## Build

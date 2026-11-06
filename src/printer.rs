@@ -20,7 +20,9 @@ pub enum State {
     Online {
         /// Its status (tape, errors).
         status: Status,
-        /// Its name, when it says.
+        /// Its model (`Brother QL-710W`), when it says.
+        model: Option<String>,
+        /// Its own name (SNMP `sysName`), when it has one.
         name: Option<String>,
     },
     /// It didn't answer.
@@ -96,7 +98,8 @@ fn read_state(host: &str) -> State {
     match net::query_status(host) {
         Ok(status) => State::Online {
             status,
-            name: net::query_model_name(host).ok(),
+            model: net::query_model_name(host).ok(),
+            name: net::query_name(host).ok().flatten(),
         },
         Err(_) => State::Offline,
     }
@@ -132,19 +135,25 @@ fn worker(
         // The tape right before printing, not from a status seconds ago.
         let fresh = read_state(host);
         let outcome = match &fresh {
-            State::Online { status, name } if status.has_media(media) && status.is_ready() => {
-                labels
-                    .iter()
-                    .map(|bitmap| raster::raster_lines(bitmap, media))
-                    .collect::<Result<Vec<_>, _>>()
-                    .map_err(|error| error.to_string())
-                    .and_then(|pages| {
-                        let pages: Vec<&[_]> = pages.iter().map(Vec::as_slice).collect();
-                        net::send_job(host, &job::pages_bytes(&pages, media, cut))
-                            .map_err(|error| error.to_string())
-                    })
-                    .map(|()| name.clone().unwrap_or_else(|| host.to_owned()))
-            }
+            State::Online {
+                status,
+                model,
+                name,
+            } if status.has_media(media) && status.is_ready() => labels
+                .iter()
+                .map(|bitmap| raster::raster_lines(bitmap, media))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| error.to_string())
+                .and_then(|pages| {
+                    let pages: Vec<&[_]> = pages.iter().map(Vec::as_slice).collect();
+                    net::send_job(host, &job::pages_bytes(&pages, media, cut))
+                        .map_err(|error| error.to_string())
+                })
+                .map(|()| {
+                    name.clone()
+                        .or_else(|| model.clone())
+                        .unwrap_or_else(|| host.to_owned())
+                }),
             State::Online { status, .. } if !status.is_ready() => Err(tf(
                 "{host} reports {errors}",
                 &[

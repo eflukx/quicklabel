@@ -11,6 +11,7 @@
 "Brother QL printers on the network, by address. A label goes to the first that is ready with tape in; click one below the label to pick it." = "Brother QL-printers in het netwerk, op adres. Een label gaat naar de eerste die klaar is met tape erin; klik er een aan onder het label om die te kiezen."
 "Click or Ctrl+R turns the text" = "Klik of Ctrl+R draait de tekst"
 "close" = "sluiten"
+"Close the window after printing" = "Venster sluiten na het printen"
 "Cut" = "Snijden"
 "Cut after every label" = "Na elk label snijden"
 "Cut once, after the last label" = "Eén keer snijden, na het laatste label"
