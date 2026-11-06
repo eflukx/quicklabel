@@ -1,10 +1,11 @@
-# Installs Quick label for this user: the exe and a Start menu item.
+# Installs Quick label for this user: the exe, quicklabel.com and a Start menu item.
 #
 # How to use: put install.ps1 next to quicklabel.exe and run it (right click, Run with
 # PowerShell). The hotkey is set in Quick label itself (Settings: stay ready in the background).
 #
-# Working principle: copies quicklabel.exe to %LOCALAPPDATA%\Programs\Quick label (no admin
-# rights needed) and makes the Start menu shortcut "Quick label". Running it again stops a
+# Working principle: copies quicklabel.exe and quicklabel.com (the command line: cmd waits for
+# it) to %LOCALAPPDATA%\Programs\Quick label (no admin rights needed) and makes the Start menu
+# shortcut "Quick label". Running it again stops a
 # running Quick label, updates the exe and starts the background process again when it was on.
 # To remove: switch staying ready off, delete the Start menu shortcut and that folder.
 
@@ -22,6 +23,10 @@ $exe = Join-Path $dir "quicklabel.exe"
 Get-Process -Name quicklabel -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 300
 Copy-Item -Force $source $exe
+$console = Join-Path $PSScriptRoot "quicklabel.com"
+if (Test-Path $console) {
+    Copy-Item -Force $console (Join-Path $dir "quicklabel.com")
+}
 
 # A new shortcut file, not an update of the old one: Windows caches a shortcut's icon.
 $link = Join-Path ([Environment]::GetFolderPath("Programs")) "Quick label.lnk"

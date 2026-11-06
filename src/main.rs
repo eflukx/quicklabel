@@ -4,23 +4,23 @@
 //! mode puts it under Ctrl+Alt+L). Type; Enter starts a new line; `**bold**`, `*italic*`; Ctrl+D inserts the date,
 //! Ctrl+T the time; Ctrl+R turns the text; Ctrl+Up/Down sets the number of labels (Ctrl+N types it), `{n}` numbers
 //! them (`{n+12}` from 13); Ctrl+Enter prints; Esc closes. The first time, add the printer's
-//! address under Printers.
+//! address under Printers. From the command line: `quicklabel "text"` prints without the
+//! window, `quicklabel --help` lists the options ([`cli`]).
 //!
 //! Working principle: one small window. The text is laid out for the tape the printer reports
 //! ([`chopshop_label::TextLabel`]): along continuous tape as long as the text needs, a die-cut
 //! label filled in the direction with the larger letters. Printers and language are kept in
 //! `%APPDATA%\iotta\quicklabel.json` (elsewhere `~/.config/iotta/quicklabel.json`; the
-//! `QUICKLABEL_SETTINGS` variable points elsewhere). `--text <text>` starts with a text,
-//! `--screenshot <png>` saves the window after a moment and quits (docs); `--dark` or `--light`
-//! overrides Windows' theme. `--resident` is resident mode's background process;
-//! `--find-printers` lists what answers the printer search and the printers on USB;
-//! `--print <address> <text>` prints once, without the window (`usb:<serial>` for USB)
-//! ([`resident`]).
+//! `QUICKLABEL_SETTINGS` variable points elsewhere). The options decide between window and
+//! command line ([`cli::Args::is_command_line`]); `--text <text>` opens the window with a text,
+//! `--dark` or `--light` overrides Windows' theme. Windows starts the exe without a console (a
+//! window program); a command-line run attaches to the console it was started from.
 
 // A GUI program on Windows: no console window when the hotkey starts it.
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod app;
+mod cli;
 mod markdown;
 mod numbering;
 mod printer;
@@ -32,53 +32,33 @@ mod style;
 const DUTCH: &str = include_str!("../i18n/nl.toml");
 
 fn main() -> eframe::Result {
-    let mut text = None;
-    let mut screenshot = None;
-    let mut theme = None;
-    let mut resident = false;
-    let mut args = std::env::args().skip(1);
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--text" => text = args.next(),
-            "--screenshot" => screenshot = args.next().map(std::path::PathBuf::from),
-            "--dark" => theme = Some(egui::Theme::Dark),
-            "--light" => theme = Some(egui::Theme::Light),
-            "--resident" => resident = true,
-            "--find-printers" => {
-                find_printers();
-                return Ok(());
-            }
-            "--abort" => {
-                let address = args.next().unwrap_or_default();
-                match chopshop_printer::usb::abort(&address) {
-                    Ok(()) => println!("{address}: job stopped"),
-                    Err(error) => eprintln!("{address}: {error}"),
-                }
-                return Ok(());
-            }
-            "--print" => {
-                let (address, text) = (args.next().unwrap_or_default(), args.next());
-                match print_once(&address, &text.unwrap_or_default()) {
-                    Ok(done) => println!("{done}"),
-                    Err(error) => {
-                        eprintln!("{address}: {error}");
-                        std::process::exit(1);
-                    }
-                }
-                return Ok(());
-            }
-            _ => {}
-        }
+    if std::env::args_os().len() > 1 {
+        attach_console();
+    }
+    let args = cli::parse();
+    if args.is_command_line() {
+        std::process::exit(cli::run(&args));
+    }
+    if let Some(option) = args.stray_print_options() {
+        eprintln!("{option} needs a text to print (see --help)");
+        std::process::exit(2);
     }
 
     chopshop_i18n::install_dutch(DUTCH);
-    if resident {
+    if args.resident {
         run_resident();
         return Ok(());
     }
+    let theme = if args.dark {
+        Some(egui::Theme::Dark)
+    } else if args.light {
+        Some(egui::Theme::Light)
+    } else {
+        None
+    };
 
     // One window: a second start brings the open one forward.
-    let window = if screenshot.is_some() {
+    let window = if args.screenshot.is_some() {
         None
     } else {
         match resident::claim(resident::WINDOW_PORT) {
@@ -87,124 +67,22 @@ fn main() -> eframe::Result {
             None => None,
         }
     };
-    app::run(text, screenshot, theme, window)
+    app::run(args.window_text, args.screenshot, theme, window)
 }
 
-/// Lists what answers on the network and the printers on USB, to stdout (to check the search).
-fn find_printers() {
-    let own = chopshop_printer::net::local_address();
-    println!("this PC: {own:?}");
-    let known: Vec<std::net::Ipv4Addr> = settings::Settings::load()
-        .printers
-        .iter()
-        .filter_map(|host| host.parse().ok())
-        .collect();
-    println!(
-        "searching: {}",
-        chopshop_printer::net::searched_networks(&known).join(", ")
-    );
-    for device in chopshop_printer::net::discover(std::time::Duration::from_millis(1500), &known) {
-        let host = device.address.to_string();
-        let errors = chopshop_printer::net::query_status(&host)
-            .map(|status| format!("{:?}", status.error_names()))
-            .unwrap_or_else(|error| error.to_string());
-        println!("{host}  {}  errors: {errors}", device.model);
-    }
-    for printer in chopshop_printer::usb::find() {
-        let status = chopshop_printer::usb::query_status(&printer.address);
-        match status {
-            Ok(status) => println!(
-                "{}  {} · {} · errors: {:?}",
-                printer.address,
-                status.model,
-                status.media_description(),
-                status.error_names()
-            ),
-            Err(error) => println!("{}  {error}", printer.address),
+/// Output to the console the exe was started from (cmd, PowerShell): a window program has
+/// none of its own. Where the output already goes somewhere (a pipe, a file), it stays there.
+/// The one `unsafe` of the workspace's own code: a Windows call without a safe wrapper.
+#[allow(unsafe_code)]
+fn attach_console() {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
+        // SAFETY: no arguments to get wrong; fails harmlessly without a parent console.
+        unsafe {
+            AttachConsole(ATTACH_PARENT_PROCESS);
         }
     }
-}
-
-/// Prints `text` once on the printer at `address` (network or `usb:<serial>`), with the
-/// settings of the window: layout of the loaded tape, typeface, HQ.
-fn print_once(address: &str, text: &str) -> Result<String, String> {
-    use chopshop_printer::job::{self, Resolution};
-    use chopshop_printer::{net, raster, usb};
-
-    let settings = settings::Settings::load();
-    let status = if usb::is_usb(address) {
-        usb::query_status(address)
-    } else {
-        net::query_status(address)
-    }
-    .map_err(|error| error.to_string())?;
-    let dump = std::env::var_os("QUICKLABEL_JOB");
-    if !status.is_ready() && dump.is_none() {
-        return Err(status.error_names().join(", "));
-    }
-    let media = status
-        .loaded_media()
-        .ok_or_else(|| "no known tape loaded".to_owned())?;
-    let layout = settings.layouts.get(media.id).copied().unwrap_or_default();
-    let (length, run) = app::shape(media, layout);
-    let resolution = if settings.printer(address).high_resolution && status.model.high_resolution()
-    {
-        Resolution::High
-    } else {
-        Resolution::Normal
-    };
-
-    let label = chopshop_label::TextLabel::new(&numbering::fill(text, 0))
-        .fill_lines(layout.fill_lines)
-        .typeface(settings.typeface());
-    if label.is_empty() {
-        return Err("no text".to_owned());
-    }
-    let across = u32::from(media.print_pins);
-    let bitmap = match resolution {
-        Resolution::Normal => label.render(across, length, run),
-        Resolution::High => label.render_fine(across, length, run),
-    };
-    // QUICKLABEL_PNG: the raster as an image instead of printing (to check a label).
-    if let Some(path) = std::env::var_os("QUICKLABEL_PNG") {
-        bitmap
-            .to_gray_image()
-            .save(&path)
-            .map_err(|error| error.to_string())?;
-        return Ok(format!(
-            "saved {} ({} × {}, {resolution:?}, {layout:?})",
-            std::path::Path::new(&path).display(),
-            bitmap.width(),
-            bitmap.height()
-        ));
-    }
-    let lines =
-        raster::raster_lines_at(&bitmap, media, resolution).map_err(|error| error.to_string())?;
-    let compression = if status.model.compression() {
-        job::Compression::Tiff
-    } else {
-        job::Compression::None
-    };
-    let bytes = job::pages_bytes(&[&lines], media, layout.cut.job(), resolution, compression);
-    // QUICKLABEL_JOB: the job's bytes to a file instead of the printer.
-    if let Some(path) = dump {
-        std::fs::write(&path, &bytes).map_err(|error| error.to_string())?;
-        return Ok(format!(
-            "{} bytes to {}",
-            bytes.len(),
-            path.to_string_lossy()
-        ));
-    }
-    if usb::is_usb(address) {
-        usb::send_job(address, &bytes)
-    } else {
-        net::send_job(address, &bytes)
-    }
-    .map_err(|error| error.to_string())?;
-    Ok(format!(
-        "printed on {address} ({}): {media}, {resolution:?}",
-        status.model
-    ))
 }
 
 /// The background process of resident mode; why it stopped goes to `resident.log` next to

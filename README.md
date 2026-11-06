@@ -60,13 +60,32 @@ cargo run -p quicklabel -- [--text "…"] [--screenshot shot.png] [--dark | --li
 
 ## From the command line
 
+With a text Quick label prints without the window; without options it opens the window.
+`quicklabel --help` lists every option.
+
 ```bat
-quicklabel --print 192.168.1.40 "Rack 4\n**do not move**"   :: prints once, the window's settings
-quicklabel --print usb:000H6Z560817 "Box {n}"                :: on USB
-quicklabel --find-printers                                   :: network and USB, with status
-quicklabel --abort usb:000H6Z560817                          :: stops a USB job the printer hangs on
+quicklabel "Rack 4" "**do not move**"            :: two lines, on the first printer that is ready
+quicklabel -p 2 -n 10 "Box {n}"                  :: ten labels, Box 1 to Box 10, on printer 2
+quicklabel --sideways --length 2 --cut batch "Spare parts"
+quicklabel --font serif --no-hq "Archive\n2026"  :: \n is a new line too
+echo Hello | quicklabel -                        :: the text from stdin
+quicklabel --png label.png "Test"                :: the label as an image, not printed
+quicklabel --list-printers                       :: the printers and their numbers for -p (--search: new ones)
 ```
 
-`QUICKLABEL_PNG=x.png` saves the label instead of printing, `QUICKLABEL_JOB=x.bin` the job's
-bytes; `QL_USB_TRACE=1` logs every USB read and write.
-```
+- Every argument is a line. The options are the window's chips (`--sideways`,
+  `--fill-lines`, `--cut each|batch|off`, `--length free|1|2|3`), `-n` labels, `--font
+  barlow|roboto|serif`, `--hq` / `--no-hq`; each `--x` has a `--no-x`.
+- What isn't given comes from the settings: the layout kept for the loaded tape, the typeface,
+  HQ per printer. The command line changes no setting.
+- `-p` takes a number from `--list-printers` or an address (`192.168.1.57`,
+  `usb:000H6Z560817`); without it the first printer that is ready. A USB printer that is also
+  on the network is printed on there.
+- Exit code 0 printed, 1 not printed, 2 wrong options.
+- `quicklabel.exe` is a window program, which cmd doesn't wait for. Next to it is
+  `quicklabel.com`, a small console program: typing `quicklabel` runs that one (`.com` comes
+  before `.exe`), it starts the exe, waits and passes on the output and exit code. The Start
+  menu and the hotkey start the exe, without a console.
+
+`QUICKLABEL_JOB=x.bin` saves the job's bytes instead of printing; `QL_USB_TRACE=1` logs every
+USB read and write; `--abort usb:…` stops a job a USB printer hangs on.
