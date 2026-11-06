@@ -18,7 +18,8 @@ Type a few lines, press **Ctrl+Enter**: printed on the Brother QL label printer.
 - Direction, fill, length and cut are kept per tape size.
 - Several labels at once: − n + next to Print (Ctrl+Up / Ctrl+Down), one job. `{n}` in the
   text is the label's number from 1; `{n+12}` adds 12 (13, 14, …); `{n+007}` keeps the zeros (008, …).
-- The first time: Printers (top right) opens by itself; add the printer's address (for example `192.168.1.40`).
+- The first time: Settings (top right) opens by itself; Search the network finds Brother QL
+  printers (this PC's network and that of printers already set), or add the printer's address (for example `192.168.1.40`).
   Several printers: click the one to print on.
 - English or Dutch (EN / NL, top right; at first the system's language). Light or dark as
   Windows is set, or by the moon / sun button (remembered).

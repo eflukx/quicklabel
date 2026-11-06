@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use chopshop_i18n::{Language, t, tf};
 use chopshop_label::{Length, Run, TextLabel};
 use chopshop_printer::Media;
+use chopshop_printer::net::Found;
 use egui::text::{CCursor, CCursorRange};
 use egui::{Color32, CornerRadius, Key, Modifiers, RichText, Ui};
 
@@ -46,6 +47,9 @@ struct App {
     resident_running: Option<(bool, Instant)>,
     /// Why switching resident mode failed.
     resident_error: Option<String>,
+    /// The printer search running, and its outcome: the networks searched and what answered.
+    search: Option<std::sync::mpsc::Receiver<Vec<Found>>>,
+    searched: Option<(Vec<String>, Vec<Found>)>,
     close_at: Option<Instant>,
     focused: bool,
     show_printers: bool,
@@ -124,6 +128,8 @@ pub fn run(
                 copies: 1,
                 resident_running: None,
                 resident_error: None,
+                search: None,
+                searched: None,
                 close_at: None,
                 focused: false,
                 show_printers,
@@ -794,6 +800,11 @@ impl App {
                     }
                 });
 
+                ui.add_space(8.0);
+                if self.search_section(ui, &ctx) {
+                    changed = true;
+                }
+
                 if cfg!(windows) {
                     ui.add_space(18.0);
                     self.resident_section(ui);
@@ -804,6 +815,104 @@ impl App {
         if changed {
             self.save();
         }
+    }
+
+    /// The printer search: a button, then the Brother QL printers found with Add; whether one
+    /// was added.
+    fn search_section(&mut self, ui: &mut Ui, ctx: &egui::Context) -> bool {
+        let c = style::palette(ui.ctx());
+        let known: Vec<std::net::Ipv4Addr> = self
+            .settings
+            .printers
+            .iter()
+            .filter_map(|host| host.parse().ok())
+            .collect();
+
+        if let Some(receiver) = &self.search {
+            match receiver.try_recv() {
+                Ok(found) => {
+                    let networks = chopshop_printer::net::searched_networks(&known);
+                    self.searched = Some((networks, found));
+                    self.search = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    ui.ctx().request_repaint_after(Duration::from_millis(100));
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.search = None,
+            }
+        }
+
+        let searching = self.search.is_some();
+        ui.horizontal(|ui| {
+            let text = if searching {
+                t("Searching…")
+            } else {
+                t("Search the network")
+            };
+            if ui
+                .add_enabled(!searching, egui::Button::new(text))
+                .on_hover_text(t("Asks every address of this network (and of the printers set) for its model, about 2 seconds"))
+                .clicked()
+            {
+                let (sender, receiver) = std::sync::mpsc::channel();
+                let ctx = ctx.clone();
+                let known = known.clone();
+                std::thread::spawn(move || {
+                    let found =
+                        chopshop_printer::net::discover(Duration::from_millis(1500), &known);
+                    let _ = sender.send(found);
+                    ctx.request_repaint();
+                });
+                self.search = Some(receiver);
+            }
+        });
+
+        let mut added = false;
+        if let Some((networks, found)) = &self.searched {
+            let printers: Vec<&Found> = found
+                .iter()
+                .filter(|device| device.is_brother_ql())
+                .collect();
+            if printers.is_empty() {
+                ui.label(
+                    RichText::new(tf(
+                        "No Brother QL printer answered on {networks}",
+                        &[("networks", &networks.join(", "))],
+                    ))
+                    .font(style::regular(14.0))
+                    .color(c.muted),
+                );
+            }
+            let mut add = None;
+            for device in printers {
+                let host = device.address.to_string();
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(&host).font(style::medium(16.0)));
+                    ui.label(
+                        RichText::new(&device.model)
+                            .font(style::regular(14.0))
+                            .color(c.muted),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if self.settings.printers.contains(&host) {
+                            ui.label(
+                                RichText::new(t("added"))
+                                    .font(style::regular(14.0))
+                                    .color(c.accent),
+                            );
+                        } else if ui.button(t("Add")).clicked() {
+                            add = Some(host.clone());
+                        }
+                    });
+                });
+            }
+            if let Some(host) = add {
+                self.printers.push(start_link(&host, ctx));
+                self.settings.printers.push(host);
+                added = true;
+            }
+        }
+        added
     }
 
     /// Resident mode: on or off, and whether the background process runs.

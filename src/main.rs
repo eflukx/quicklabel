@@ -12,7 +12,8 @@
 //! `%APPDATA%\iotta\quicklabel.json` (elsewhere `~/.config/iotta/quicklabel.json`; the
 //! `QUICKLABEL_SETTINGS` variable points elsewhere). `--text <text>` starts with a text,
 //! `--screenshot <png>` saves the window after a moment and quits (docs); `--dark` or `--light`
-//! overrides Windows' theme. `--resident` is resident mode's background process
+//! overrides Windows' theme. `--resident` is resident mode's background process;
+//! `--find-printers` lists what answers the printer search
 //! ([`resident`]).
 
 // A GUI program on Windows: no console window when the hotkey starts it.
@@ -41,6 +42,10 @@ fn main() -> eframe::Result {
             "--dark" => theme = Some(egui::Theme::Dark),
             "--light" => theme = Some(egui::Theme::Light),
             "--resident" => resident = true,
+            "--find-printers" => {
+                find_printers();
+                return Ok(());
+            }
             _ => {}
         }
     }
@@ -62,6 +67,24 @@ fn main() -> eframe::Result {
         }
     };
     app::run(text, screenshot, theme, window)
+}
+
+/// Lists what answers on the network, to stdout (to check the search).
+fn find_printers() {
+    let own = chopshop_printer::net::local_address();
+    println!("this PC: {own:?}");
+    let known: Vec<std::net::Ipv4Addr> = settings::Settings::load()
+        .printers
+        .iter()
+        .filter_map(|host| host.parse().ok())
+        .collect();
+    println!(
+        "searching: {}",
+        chopshop_printer::net::searched_networks(&known).join(", ")
+    );
+    for device in chopshop_printer::net::discover(std::time::Duration::from_millis(1500), &known) {
+        println!("{}  {}", device.address, device.model);
+    }
 }
 
 /// The background process of resident mode; why it stopped goes to `resident.log` next to

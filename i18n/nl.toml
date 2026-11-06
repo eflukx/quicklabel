@@ -2,7 +2,9 @@
 # Compiled into the exe (include_str!): nothing to ship next to it.
 
 "Add" = "Toevoegen"
+"added" = "toegevoegd"
 "As long as the text needs" = "Zo lang als de tekst nodig heeft"
+"Asks every address of this network (and of the printers set) for its model, about 2 seconds" = "Vraagt elk adres in dit netwerk (en dat van de ingestelde printers) naar zijn model, ongeveer 2 seconden"
 "At most {length} mm: {times} × the tape's width" = "Hoogstens {length} mm: {times} × de tapebreedte"
 "batch" = "reeks"
 "bold" = "vet"
@@ -24,6 +26,7 @@
 "labels" = "labels"
 "Length" = "Lengte"
 "Lengthwise" = "In de lengte"
+"No Brother QL printer answered on {networks}" = "Geen Brother QL-printer antwoordde op {networks}"
 "No printer ready with tape loaded" = "Geen printer klaar met tape erin"
 "No printer yet: add one" = "Nog geen printer: voeg er een toe"
 "No printer: saved as {path}" = "Geen printer: opgeslagen als {path}"
@@ -51,6 +54,8 @@
 "Save as PNG" = "Opslaan als PNG"
 "Save {copies} as PNG" = "{copies} opslaan als PNG"
 "Saving the settings failed: {error}" = "Opslaan van de instellingen mislukt: {error}"
+"Search the network" = "Netwerk doorzoeken"
+"Searching…" = "Zoeken…"
 "Settings" = "Instellingen"
 "Sideways" = "Dwars"
 "Stay ready in the background (starts with Windows)" = "Klaar staan op de achtergrond (start met Windows)"
