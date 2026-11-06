@@ -32,13 +32,22 @@ const MAX_COPIES: u16 = 99;
 /// The text field's id, for focus and its cursor.
 const FIELD: &str = "quicklabel_text";
 
+/// The preview: the label at full resolution as a texture, shown filtered at any smaller size.
+struct Preview {
+    /// Tape, layout and text it was made for.
+    key: String,
+    /// Its size in dots.
+    size: egui::Vec2,
+    texture: egui::TextureHandle,
+}
+
 struct App {
     settings: Settings,
     printers: Vec<Link>,
     /// The printer picked by a click; else the first that can print.
     chosen: Option<usize>,
     text: String,
-    preview: Option<(String, egui::TextureHandle)>,
+    preview: Option<Preview>,
     message: Option<Result<String, String>>,
     printing: bool,
     /// How many labels Print makes; back to 1 each start.
@@ -359,20 +368,32 @@ impl App {
         let label = TextLabel::new(&numbering::fill(&self.text, 0)).fill_lines(layout.fill_lines);
         let (length, run) = shape(media, layout);
         let key = format!("{}|{layout:?}|{}", media.id, self.text);
-        if self.preview.as_ref().is_none_or(|(old, _)| *old != key) {
+        if self
+            .preview
+            .as_ref()
+            .is_none_or(|preview| preview.key != key)
+        {
             let image = label
                 .landscape(u32::from(media.print_pins), length, run)
                 .to_gray_image();
+            let size = egui::vec2(image.width() as f32, image.height() as f32);
             let color = egui::ColorImage::from_gray(
                 [image.width() as usize, image.height() as usize],
                 image.as_raw(),
             );
-            let texture =
-                ui.ctx()
-                    .load_texture("quicklabel_preview", color, egui::TextureOptions::LINEAR);
-            self.preview = Some((key, texture));
+            // Linear with mipmaps: smooth at strong reductions too.
+            let options = egui::TextureOptions {
+                mipmap_mode: Some(egui::TextureFilter::Linear),
+                ..egui::TextureOptions::LINEAR
+            };
+            let texture = ui.ctx().load_texture("quicklabel_preview", color, options);
+            self.preview = Some(Preview { key, size, texture });
         }
-        let Some(texture) = self.preview.as_ref().map(|(_, texture)| texture.clone()) else {
+        let Some((w, h, texture)) = self
+            .preview
+            .as_ref()
+            .map(|preview| (preview.size.x, preview.size.y, preview.texture.id()))
+        else {
             return;
         };
 
@@ -384,8 +405,6 @@ impl App {
 
         // The paper: the print area plus the tape's unprinted edges and the feed (or the
         // die-cut label's edge), in dots; the tape runs left to right along it, else down.
-        let [w, h] = texture.size();
-        let (w, h) = (w as f32, h as f32);
         let continuous = media.is_continuous();
         let edge = f32::from(media.left_pins.min(media.right_pins)).max(12.0);
         let feed = if continuous { FEED_DOTS as f32 } else { 18.0 };
@@ -409,11 +428,13 @@ impl App {
         // Room for the dimension lines: under the paper and right of it (and as much on the
         // left, so the paper stays centred).
         let (below, beside) = (26.0, 32.0);
-        let room = tray.shrink(22.0);
-        let room = egui::Rect::from_min_max(room.min + egui::vec2(0.0, 30.0), room.max);
+        // As large as the tray allows, but never a dot larger than a screen pixel.
+        let pixels_per_point = ui.ctx().pixels_per_point();
+        let room = tray.shrink(14.0);
+        let room = egui::Rect::from_min_max(room.min + egui::vec2(0.0, 34.0), room.max);
         let scale = ((room.width() - 2.0 * beside) / paper_dots.x)
             .min((room.height() - below) / paper_dots.y)
-            .min(0.6);
+            .min(1.0 / pixels_per_point);
         let paper_size = paper_dots * scale;
         let paper =
             egui::Rect::from_center_size(room.center() - egui::vec2(0.0, below / 2.0), paper_size);
@@ -441,7 +462,7 @@ impl App {
             );
         } else {
             let print = egui::Rect::from_center_size(paper.center(), egui::vec2(w, h) * scale);
-            egui::Image::from_texture((texture.id(), print.size())).paint_at(ui, print);
+            egui::Image::from_texture((texture, print.size())).paint_at(ui, print);
         }
 
         // The sizes as dimension lines: the tape's width across it, the label's length along
