@@ -60,10 +60,15 @@ pub fn run(
         native,
         Box::new(move |creation| {
             style::install(&creation.egui_ctx);
-            if let Some(theme) = theme {
+            let settings = Settings::load();
+            let saved = match settings.theme.as_str() {
+                "light" => Some(egui::Theme::Light),
+                "dark" => Some(egui::Theme::Dark),
+                _ => None,
+            };
+            if let Some(theme) = theme.or(saved) {
                 creation.egui_ctx.set_theme(theme);
             }
-            let settings = Settings::load();
             chopshop_i18n::set_language(if settings.language.is_empty() {
                 settings::system_language()
             } else {
@@ -400,6 +405,26 @@ impl App {
         }
     }
 
+    /// Light or dark: a moon in light (to dark), a sun in dark (to light); remembered.
+    fn theme_switch(&mut self, ui: &mut Ui) {
+        let dark = ui.ctx().theme() == egui::Theme::Dark;
+        let hint = if dark {
+            t("Switch to light")
+        } else {
+            t("Switch to dark")
+        };
+        if style::theme_button(ui, dark).on_hover_text(hint).clicked() {
+            let (theme, code) = if dark {
+                (egui::Theme::Light, "light")
+            } else {
+                (egui::Theme::Dark, "dark")
+            };
+            ui.ctx().set_theme(theme);
+            self.settings.theme = code.to_owned();
+            self.save();
+        }
+    }
+
     fn save(&mut self) {
         if let Err(error) = self.settings.save() {
             self.message = Some(Err(tf(
@@ -586,7 +611,9 @@ impl eframe::App for App {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
                         self.language_switch(ui);
-                        ui.add_space(8.0);
+                        ui.add_space(6.0);
+                        self.theme_switch(ui);
+                        ui.add_space(6.0);
                         if style::chip(ui, t("Printers"), self.show_printers, None)
                             .on_hover_text(t("Add or remove printers"))
                             .clicked()

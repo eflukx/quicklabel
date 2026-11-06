@@ -11,7 +11,7 @@ Type a few lines, press **Ctrl+Enter**: printed on the Brother QL label printer.
 - The first time: Printers (top right) opens by itself; add the printer's address (for example `192.168.1.40`).
   Several printers: click the one to print on.
 - English or Dutch (EN / NL, top right; at first the system's language). Light or dark as
-  Windows is set.
+  Windows is set, or by the moon / sun button (remembered).
 
 ## Install (Windows)
 

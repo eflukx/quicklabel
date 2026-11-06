@@ -1,4 +1,4 @@
-//! What quicklabel remembers: the printers and the language.
+//! What quicklabel remembers: the printers, the language and light or dark.
 
 use std::path::PathBuf;
 
@@ -12,6 +12,8 @@ pub struct Settings {
     pub printers: Vec<String>,
     /// `en` or `nl`; empty: from the system (Dutch Windows: Dutch).
     pub language: String,
+    /// `light` or `dark`; empty: as Windows is set.
+    pub theme: String,
 }
 
 impl Settings {

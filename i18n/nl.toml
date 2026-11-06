@@ -19,6 +19,8 @@
 "Remove this printer" = "Deze printer verwijderen"
 "Save as PNG" = "Opslaan als PNG"
 "Saving the settings failed: {error}" = "Opslaan van de instellingen mislukt: {error}"
+"Switch to dark" = "Naar donker"
+"Switch to light" = "Naar licht"
 "Type the label text" = "Typ de labeltekst"
 "Without a printer, the label is saved as a PNG" = "Zonder printer wordt het label als PNG opgeslagen"
 "Your text appears here" = "Hier komt je tekst"

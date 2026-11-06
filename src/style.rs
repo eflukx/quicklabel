@@ -226,6 +226,39 @@ pub fn chip(ui: &mut Ui, text: &str, on: bool, dot: Option<Color32>) -> Response
         .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
+/// The light/dark button: a round chip with a moon (in light) or a sun (in dark), drawn.
+pub fn theme_button(ui: &mut Ui, dark: bool) -> Response {
+    let c = palette(ui.ctx());
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(26.0), Sense::click());
+    let fill = if response.hovered() {
+        c.green.gamma_multiply(0.35)
+    } else {
+        c.rule
+    };
+    let painter = ui.painter();
+    let centre = rect.center();
+    painter.circle_filled(centre, 13.0, fill);
+
+    if dark {
+        // Sun: a disc and eight rays.
+        let sun = Color32::from_rgb(0xf5, 0xc4, 0x51);
+        painter.circle_filled(centre, 4.0, sun);
+        for ray in 0..8 {
+            let angle = ray as f32 * std::f32::consts::FRAC_PI_4;
+            let direction = Vec2::angled(angle);
+            painter.line_segment(
+                [centre + direction * 6.5, centre + direction * 9.0],
+                Stroke::new(1.6, sun),
+            );
+        }
+    } else {
+        // Moon: a disc with a disc of the chip's fill taken out.
+        painter.circle_filled(centre, 7.0, c.text);
+        painter.circle_filled(centre + egui::vec2(3.8, -3.2), 6.0, fill);
+    }
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
 /// A key as a keycap: `Ctrl`, `Enter`.
 pub fn keycap(ui: &mut Ui, key: &str) {
     let c = palette(ui.ctx());
