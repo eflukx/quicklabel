@@ -36,6 +36,8 @@ pub struct Layout {
     pub length: u8,
     /// Where the cutter cuts.
     pub cut: Cut,
+    /// Every line as large as fills the width, each its own size.
+    pub fill_lines: bool,
 }
 
 /// Where the cutter cuts: after each label, once after the batch, or not.
@@ -69,6 +71,7 @@ impl Default for Layout {
             sideways: false,
             length: 2,
             cut: Cut::Each,
+            fill_lines: false,
         }
     }
 }

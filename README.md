@@ -12,8 +12,10 @@ Type a few lines, press **Ctrl+Enter**: printed on the Brother QL label printer.
 - Lengthwise (along the label's long side) or Sideways (Ctrl+R). On continuous tape the label
   is at most 1×, 2× (default) or 3× the tape's width long, or free; the text shrinks to fit.
   Die-cut labels have their own size.
+- Fill lines (Ctrl+F): every line as large as fits the width, each its own size; together
+  they shrink to fit the height. Off: one size for all lines.
 - Cut: after each label (default), once after the batch, or off.
-- Direction, length and cut are kept per tape size.
+- Direction, fill, length and cut are kept per tape size.
 - Several labels at once: − n + next to Print (Ctrl+Up / Ctrl+Down), one job. `{n}` in the
   text is the label's number from 1; `{n+12}` adds 12 (13, 14, …); `{n+007}` keeps the zeros (008, …).
 - The first time: Printers (top right) opens by itself; add the printer's address (for example `192.168.1.40`).

@@ -177,12 +177,11 @@ impl App {
 
     /// The raster of label `index` of the run (`{n}` filled in).
     fn render(&self, media: &Media, index: u16) -> chopshop_label::Bitmap {
-        let (length, run) = shape(media, self.layout(media));
-        TextLabel::new(&numbering::fill(&self.text, index)).render(
-            u32::from(media.print_pins),
-            length,
-            run,
-        )
+        let layout = self.layout(media);
+        let (length, run) = shape(media, layout);
+        TextLabel::new(&numbering::fill(&self.text, index))
+            .fill_lines(layout.fill_lines)
+            .render(u32::from(media.print_pins), length, run)
     }
 
     /// Every label of the run.
@@ -292,6 +291,17 @@ impl App {
                 },
             );
         }
+        if ctx.input_mut(|input| input.consume_key(Modifiers::COMMAND, Key::F)) {
+            let media = self.media();
+            let layout = self.layout(media);
+            self.set_layout(
+                media,
+                Layout {
+                    fill_lines: !layout.fill_lines,
+                    ..layout
+                },
+            );
+        }
         if ctx.input_mut(|input| input.consume_key(Modifiers::COMMAND, Key::T)) {
             let now = jiff::Zoned::now().strftime("%H:%M").to_string();
             self.insert(ctx, &now);
@@ -332,8 +342,8 @@ impl App {
     fn preview(&mut self, ui: &mut Ui) {
         let c = style::palette(ui.ctx());
         let media = self.media();
-        let label = TextLabel::new(&numbering::fill(&self.text, 0));
         let layout = self.layout(media);
+        let label = TextLabel::new(&numbering::fill(&self.text, 0)).fill_lines(layout.fill_lines);
         let (length, run) = shape(media, layout);
         let key = format!("{}|{layout:?}|{}", media.id, self.text);
         if self.preview.as_ref().is_none_or(|(old, _)| *old != key) {
@@ -532,13 +542,23 @@ impl App {
         ui.spacing_mut().item_spacing.x = 4.0;
         let mut changed = layout;
 
-        for (sideways, name) in [(false, t("Lengthwise")), (true, t("Sideways"))] {
-            if style::chip(ui, name, layout.sideways == sideways, None)
-                .on_hover_text(t("Ctrl+R turns the text"))
-                .clicked()
-            {
-                changed.sideways = sideways;
-            }
+        // One chip that turns: the way the text runs now.
+        let direction = if layout.sideways {
+            t("Sideways")
+        } else {
+            t("Lengthwise")
+        };
+        if style::chip(ui, direction, true, None)
+            .on_hover_text(t("Click or Ctrl+R turns the text"))
+            .clicked()
+        {
+            changed.sideways = !layout.sideways;
+        }
+        if style::chip(ui, t("Fill lines"), layout.fill_lines, None)
+            .on_hover_text(t("Every line as large as fits the width (Ctrl+F)"))
+            .clicked()
+        {
+            changed.fill_lines = !layout.fill_lines;
         }
 
         ui.add_space(14.0);
