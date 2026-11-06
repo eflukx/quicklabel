@@ -198,6 +198,103 @@ fn apply(style: &mut egui::Style, c: &Palette) {
 
 /// A chip: green when on, a plate when off, with a status dot when given; takes clicks.
 pub fn chip(ui: &mut Ui, text: &str, on: bool, dot: Option<Color32>) -> Response {
+    chip_with(ui, text, on, |ui, ink, fill| {
+        if let Some(dot) = dot {
+            let (rect, _) = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover());
+            let ring = if on { ink } else { fill };
+            ui.painter()
+                .circle(rect.center(), 4.0, dot, Stroke::new(1.0, ring));
+        }
+    })
+}
+
+/// The chip of the text's direction: a small label with an upright A in front, wide for
+/// lengthwise, tall for sideways (as Brother's own software shows it).
+pub fn direction_chip(ui: &mut Ui, text: &str, sideways: bool) -> Response {
+    chip_with(ui, text, true, |ui, ink, _| {
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(20.0, 16.0), Sense::hover());
+        let label = if sideways {
+            egui::vec2(11.0, 15.0)
+        } else {
+            egui::vec2(19.0, 12.0)
+        };
+        let label = egui::Rect::from_center_size(rect.center(), label);
+        let painter = ui.painter();
+        painter.rect_stroke(
+            label,
+            CornerRadius::same(2),
+            Stroke::new(1.3, ink),
+            egui::StrokeKind::Inside,
+        );
+        painter.text(
+            label.center() + egui::vec2(0.0, 0.5),
+            egui::Align2::CENTER_CENTER,
+            "A",
+            semibold(10.5),
+            ink,
+        );
+    })
+}
+
+/// One pill with `options` side by side, the `selected` one green; a click anywhere on it
+/// moves to the next option. Returns the newly selected index after a click.
+pub fn segmented(ui: &mut Ui, options: &[&str], selected: usize) -> Option<usize> {
+    let c = palette(ui.ctx());
+    let font = medium(14.0);
+    let galleys: Vec<_> = options
+        .iter()
+        .map(|text| {
+            ui.painter()
+                .layout_no_wrap((*text).to_owned(), font.clone(), c.text)
+        })
+        .collect();
+    let widths: Vec<f32> = galleys
+        .iter()
+        .map(|galley| galley.size().x + 18.0)
+        .collect();
+    let height = 26.0;
+    let (rect, response) = ui.allocate_exact_size(
+        egui::vec2(widths.iter().sum::<f32>() + 4.0, height),
+        Sense::click(),
+    );
+
+    let painter = ui.painter();
+    let fill = if response.hovered() {
+        c.rule.gamma_multiply(0.85)
+    } else {
+        c.rule
+    };
+    painter.rect_filled(rect, CornerRadius::same(13), fill);
+    let mut x = rect.left() + 2.0;
+    for (index, (galley, width)) in galleys.into_iter().zip(&widths).enumerate() {
+        let part = egui::Rect::from_min_size(
+            egui::pos2(x, rect.top() + 2.0),
+            egui::vec2(*width, height - 4.0),
+        );
+        let ink = if index == selected {
+            painter.rect_filled(part, CornerRadius::same(11), c.green);
+            c.green_ink
+        } else {
+            c.muted
+        };
+        let at = part.center() - galley.size() / 2.0;
+        painter.galley_with_override_text_color(at, galley, ink);
+        x += width;
+    }
+
+    response
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .clicked()
+        .then(|| (selected + 1) % options.len().max(1))
+}
+
+/// A chip with `leading` drawn before the text (given the ink and fill colours).
+fn chip_with(
+    ui: &mut Ui,
+    text: &str,
+    on: bool,
+    leading: impl FnOnce(&mut Ui, Color32, Color32),
+) -> Response {
     let c = palette(ui.ctx());
     let (fill, colour) = if on {
         (c.green, c.green_ink)
@@ -211,12 +308,7 @@ pub fn chip(ui: &mut Ui, text: &str, on: bool, dot: Option<Color32>) -> Response
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
             ui.horizontal(|ui| {
-                if let Some(dot) = dot {
-                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover());
-                    let ring = if on { c.green_ink } else { fill };
-                    ui.painter()
-                        .circle(rect.center(), 4.0, dot, Stroke::new(1.0, ring));
-                }
+                leading(ui, colour, fill);
                 ui.label(egui::RichText::new(text).font(medium(14.0)).color(colour));
             });
         })

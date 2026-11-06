@@ -554,7 +554,7 @@ impl App {
         } else {
             t("Lengthwise")
         };
-        if style::chip(ui, direction, true, None)
+        if style::direction_chip(ui, direction, layout.sideways)
             .on_hover_text(t("Click or Ctrl+R turns the text"))
             .clicked()
         {
@@ -654,15 +654,21 @@ impl App {
         });
     }
 
-    /// The language switch: EN / NL.
+    /// The language switch: one pill EN | NL; a click switches.
     fn language_switch(&mut self, ui: &mut Ui) {
-        for language in Language::ALL.into_iter().rev() {
-            let on = chopshop_i18n::language() == language;
-            if style::chip(ui, language.short(), on, None).clicked() && !on {
-                chopshop_i18n::set_language(language);
-                self.settings.language = language.code().to_owned();
-                self.save();
-            }
+        let names: Vec<&str> = Language::ALL
+            .iter()
+            .map(|language| language.short())
+            .collect();
+        let current = Language::ALL
+            .iter()
+            .position(|language| *language == chopshop_i18n::language())
+            .unwrap_or(0);
+        if let Some(next) = style::segmented(ui, &names, current) {
+            let language = Language::ALL[next];
+            chopshop_i18n::set_language(language);
+            self.settings.language = language.code().to_owned();
+            self.save();
         }
     }
 

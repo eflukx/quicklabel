@@ -21,7 +21,7 @@ Type a few lines, press **Ctrl+Enter**: printed on the Brother QL label printer.
 - The first time: Settings (top right) opens by itself; Search the network finds Brother QL
   printers (this PC's network and that of printers already set), or add the printer's address (for example `192.168.1.40`).
   Several printers: click the one to print on.
-- English or Dutch (EN / NL, top right; at first the system's language). Light or dark as
+- English or Dutch (the EN | NL switch, top right; at first the system's language). Light or dark as
   Windows is set, or by the moon / sun button (remembered).
 
 ## Instantly under the hotkey (resident mode)
