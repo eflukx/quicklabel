@@ -8,9 +8,10 @@ Type a few lines, press **Ctrl+Enter**: printed on the Brother QL label printer.
 - The text runs along the tape, as large as it fits: more lines, smaller letters. Continuous
   tape gets as long as the text; a die-cut label is filled in whichever direction gives the
   larger letters. The tape is the one the printer reports.
-- The first time: open Printers and add the printer's address (for example `192.168.1.40`).
+- The first time: Printers (top right) opens by itself; add the printer's address (for example `192.168.1.40`).
   Several printers: click the one to print on.
-- English or Dutch (EN / NL, bottom right; at first the system's language).
+- English or Dutch (EN / NL, top right; at first the system's language). Light or dark as
+  Windows is set.
 
 ## Install (Windows)
 
@@ -20,7 +21,9 @@ needed: the fonts and texts are inside the exe. Settings: `%APPDATA%\iotta\quick
 
 ## Build
 
+`build.rs` links `assets/icon.ico` into the Windows exe (needs `x86_64-w64-mingw32-windres`).
+
 ```bash
 cargo build --release -p quicklabel --target x86_64-pc-windows-gnu
-cargo run -p quicklabel -- [--text "…"] [--screenshot shot.png]
+cargo run -p quicklabel -- [--text "…"] [--screenshot shot.png] [--dark | --light]
 ```

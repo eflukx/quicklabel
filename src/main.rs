@@ -10,7 +10,8 @@
 //! label filled in the direction with the larger letters. Printers and language are kept in
 //! `%APPDATA%\iotta\quicklabel.json` (elsewhere `~/.config/iotta/quicklabel.json`; the
 //! `QUICKLABEL_SETTINGS` variable points elsewhere). `--text <text>` starts with a text,
-//! `--screenshot <png>` saves the window after a moment and quits (docs).
+//! `--screenshot <png>` saves the window after a moment and quits (docs); `--dark` or `--light`
+//! overrides Windows' theme.
 
 // A GUI program on Windows: no console window when the hotkey starts it.
 #![cfg_attr(windows, windows_subsystem = "windows")]
@@ -26,17 +27,20 @@ const DUTCH: &str = include_str!("../i18n/nl.toml");
 fn main() -> eframe::Result {
     let mut text = None;
     let mut screenshot = None;
+    let mut theme = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--text" => text = args.next(),
             "--screenshot" => screenshot = args.next().map(std::path::PathBuf::from),
+            "--dark" => theme = Some(egui::Theme::Dark),
+            "--light" => theme = Some(egui::Theme::Light),
             _ => {}
         }
     }
 
     chopshop_i18n::install_dutch(DUTCH);
-    app::run(text, screenshot)
+    app::run(text, screenshot, theme)
 }
 
 #[cfg(test)]

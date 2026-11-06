@@ -36,11 +36,17 @@ struct App {
 }
 
 /// Runs the window until it closes.
-pub fn run(text: Option<String>, screenshot: Option<PathBuf>) -> eframe::Result {
+/// `theme` overrides the system's light or dark.
+pub fn run(
+    text: Option<String>,
+    screenshot: Option<PathBuf>,
+    theme: Option<egui::Theme>,
+) -> eframe::Result {
     let viewport = egui::ViewportBuilder::default()
         .with_title("Quick label")
-        .with_inner_size([640.0, 460.0])
-        .with_min_inner_size([420.0, 320.0])
+        .with_icon(std::sync::Arc::new(style::window_icon()))
+        .with_inner_size([680.0, 540.0])
+        .with_min_inner_size([480.0, 400.0])
         .with_always_on_top();
     let native = eframe::NativeOptions {
         viewport,
@@ -54,6 +60,9 @@ pub fn run(text: Option<String>, screenshot: Option<PathBuf>) -> eframe::Result 
         native,
         Box::new(move |creation| {
             style::install(&creation.egui_ctx);
+            if let Some(theme) = theme {
+                creation.egui_ctx.set_theme(theme);
+            }
             let settings = Settings::load();
             chopshop_i18n::set_language(if settings.language.is_empty() {
                 settings::system_language()
@@ -222,12 +231,16 @@ impl App {
         }
     }
 
+    /// The label as it comes out: white paper on a tray, with its size under it; the last
+    /// print's outcome as a pill on the tray.
     fn preview(&mut self, ui: &mut Ui) {
+        let c = style::palette(ui.ctx());
         let media = self.media();
+        let label = TextLabel::new(&self.text);
         let key = format!("{}|{}", media.id, self.text);
         if self.preview.as_ref().is_none_or(|(old, _)| *old != key) {
             let length = (!media.is_continuous()).then_some(u32::from(media.print_length_dots));
-            let image = TextLabel::new(&self.text)
+            let image = label
                 .landscape(u32::from(media.print_pins), length)
                 .to_gray_image();
             let color = egui::ColorImage::from_gray(
@@ -243,29 +256,119 @@ impl App {
             return;
         };
 
+        let tray = ui.available_rect_before_wrap();
+        ui.allocate_rect(tray, egui::Sense::hover());
+        let painter = ui.painter_at(tray);
+        painter.rect_filled(tray, CornerRadius::same(12), c.tray);
+
+        // The paper: the print area plus the tape's unprinted edges (and the feed of
+        // continuous tape), in dots.
         let [w, h] = texture.size();
         let (w, h) = (w as f32, h as f32);
-        let margin = 6.0;
-        let scale = ((ui.available_width() - 2.0 * margin) / w).min(140.0 / h);
-        let size = egui::vec2(w * scale, h * scale);
-        let (rect, _) =
-            ui.allocate_exact_size(size + egui::Vec2::splat(2.0 * margin), egui::Sense::hover());
-        ui.painter()
-            .rect_filled(rect, CornerRadius::same(4), Color32::WHITE);
-        egui::Image::from_texture((texture.id(), size)).paint_at(
-            ui,
-            egui::Rect::from_min_size(rect.min + egui::Vec2::splat(margin), size),
+        let continuous = media.is_continuous();
+        let edge = |pins: u16| f32::from(pins).max(12.0);
+        let feed = if continuous { 35.0 } else { 18.0 };
+        let across = h + edge(media.left_pins.min(media.right_pins)) * 2.0;
+        // Nothing typed: a blank label of a square-ish length to type onto.
+        let along = if label.is_empty() {
+            across * 1.4
+        } else {
+            w + 2.0 * feed
+        };
+        let paper_dots = egui::vec2(along, across);
+        let caption_height = 22.0;
+        let room = tray.shrink(22.0);
+        let scale = (room.width() / paper_dots.x)
+            .min((room.height() - caption_height) / paper_dots.y)
+            .min(0.6);
+        let paper_size = paper_dots * scale;
+        let paper = egui::Rect::from_center_size(
+            room.center() - egui::vec2(0.0, caption_height / 2.0),
+            paper_size,
         );
+        let corner = if continuous {
+            1
+        } else {
+            (paper_size.y * 0.04).clamp(3.0, 10.0) as u8
+        };
+        let shadow = egui::Shadow {
+            offset: [0, 4],
+            blur: 16,
+            spread: 0,
+            color: Color32::from_black_alpha(if c.dark { 120 } else { 38 }),
+        };
+        painter.add(shadow.as_shape(paper, CornerRadius::same(corner)));
+        painter.rect_filled(paper, CornerRadius::same(corner), Color32::WHITE);
+
+        if label.is_empty() {
+            painter.text(
+                paper.center(),
+                egui::Align2::CENTER_CENTER,
+                t("Your text appears here"),
+                style::regular((paper_size.y * 0.12).clamp(13.0, 22.0)),
+                style::LIGHT.faint,
+            );
+        } else {
+            let print = egui::Rect::from_center_size(paper.center(), egui::vec2(w, h) * scale);
+            egui::Image::from_texture((texture.id(), print.size())).paint_at(ui, print);
+        }
+
+        let length_mm = if continuous {
+            ((w + 2.0 * feed) / 300.0 * 25.4).round()
+        } else {
+            f32::from(media.length_mm)
+        };
+        let caption = if label.is_empty() {
+            tf("{width} mm tape", &[("width", &media.width_mm)])
+        } else if continuous {
+            tf(
+                "{width} mm tape · {length} mm long",
+                &[("width", &media.width_mm), ("length", &length_mm)],
+            )
+        } else {
+            tf(
+                "{width} × {length} mm label",
+                &[("width", &media.width_mm), ("length", &length_mm)],
+            )
+        };
+        painter.text(
+            egui::pos2(paper.center().x, paper.bottom() + 10.0),
+            egui::Align2::CENTER_TOP,
+            caption,
+            style::regular(13.5),
+            c.muted,
+        );
+
+        // The outcome, as a pill at the tray's top.
+        let pill = match &self.message {
+            Some(Ok(text)) => Some((format!("✔  {text}"), c.green, c.green_ink)),
+            Some(Err(text)) => Some((text.clone(), c.alarm, Color32::WHITE)),
+            None if self.printing => Some((t("Printing…").to_owned(), c.plate, c.text)),
+            None => None,
+        };
+        if let Some((text, fill, colour)) = pill {
+            let galley = painter.layout(text, style::medium(15.0), colour, tray.width() - 60.0);
+            let size = galley.size() + egui::vec2(28.0, 12.0);
+            let rect = egui::Rect::from_center_size(
+                egui::pos2(tray.center().x, tray.top() + 14.0 + size.y / 2.0),
+                size,
+            );
+            painter.add(shadow.as_shape(rect, CornerRadius::same(16)));
+            painter.rect_filled(rect, CornerRadius::same(16), fill);
+            painter.galley(rect.min + egui::vec2(14.0, 6.0), galley, colour);
+        }
     }
 
-    /// The printers as badges: the one used is green; a click picks another.
+    /// The printers as chips with a status dot: the one used is green; a click picks another.
     fn printer_line(&mut self, ui: &mut Ui) {
-        let small = |text: String| RichText::new(text).font(style::regular(14.0));
+        let c = style::palette(ui.ctx());
         if self.printers.is_empty() {
-            ui.label(
-                small(t("No printer yet: add its address under Printers").to_owned())
-                    .color(style::MUTED),
-            );
+            if style::chip(ui, t("No printer yet: add one"), false, Some(c.echo))
+                .on_hover_text(t("Without a printer, the label is saved as a PNG"))
+                .clicked()
+            {
+                self.show_printers = true;
+            }
             return;
         }
 
@@ -273,16 +376,9 @@ impl App {
         ui.horizontal_wrapped(|ui| {
             for index in 0..self.printers.len() {
                 let link = &self.printers[index];
-                let text = match link.state() {
-                    State::Online { status, name } => format!(
-                        "{} · {}",
-                        name.unwrap_or_else(|| link.host.clone()),
-                        status.media_description()
-                    ),
-                    State::Offline => tf("{host}: doesn't answer", &[("host", &link.host)]),
-                    State::Checking => tf("{host}: checking…", &[("host", &link.host)]),
-                };
-                if style::badge(ui, &text, target == Some(index))
+                let state = link.state();
+                let (text, dot) = describe(&link.host, &state, c);
+                if style::chip(ui, &text, target == Some(index), Some(dot))
                     .on_hover_text(t("Print on this printer"))
                     .clicked()
                 {
@@ -296,7 +392,7 @@ impl App {
     fn language_switch(&mut self, ui: &mut Ui) {
         for language in Language::ALL.into_iter().rev() {
             let on = chopshop_i18n::language() == language;
-            if style::badge(ui, language.short(), on).clicked() && !on {
+            if style::chip(ui, language.short(), on, None).clicked() && !on {
                 chopshop_i18n::set_language(language);
                 self.settings.language = language.code().to_owned();
                 self.save();
@@ -313,26 +409,62 @@ impl App {
         }
     }
 
-    /// Printers to add and remove; open on its own while there are none.
-    fn printers_section(&mut self, ui: &mut Ui) {
+    /// Printers to add and remove, on a card in the tray's place; open on its own while
+    /// there are none.
+    fn printers_card(&mut self, ui: &mut Ui) {
+        let c = style::palette(ui.ctx());
         let ctx = ui.ctx().clone();
         let mut changed = false;
+        let rect = ui.available_rect_before_wrap();
 
-        egui::CollapsingHeader::new(RichText::new(t("Printers")).color(style::MUTED))
-            .id_salt("quicklabel_printers")
-            .default_open(self.show_printers)
-            .show(ui, |ui| {
-                let mut remove = None;
-                for (index, host) in self.settings.printers.iter().enumerate() {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(host).font(style::regular(15.0)));
-                        if ui
-                            .small_button("×")
-                            .on_hover_text(t("Remove this printer"))
-                            .clicked()
-                        {
-                            remove = Some(index);
+        let mut card = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+        egui::Frame::new()
+            .fill(c.plate)
+            .corner_radius(CornerRadius::same(12))
+            .inner_margin(egui::Margin::same(18))
+            .show(&mut card, |ui| {
+                ui.set_min_size(rect.size() - egui::Vec2::splat(36.0));
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(t("Printers")).font(style::semibold(19.0)));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button(t("Done")).clicked() {
+                            self.show_printers = false;
                         }
+                    });
+                });
+                ui.label(
+                    RichText::new(t(
+                        "Brother QL printers on the network, by address. A label goes to the first that is ready with tape in; click one below the label to pick it.",
+                    ))
+                    .font(style::regular(14.0))
+                    .color(c.muted),
+                );
+                ui.add_space(10.0);
+
+                let mut remove = None;
+                for (index, link) in self.printers.iter().enumerate() {
+                    let (text, dot) = describe(&link.host, &link.state(), c);
+                    ui.horizontal(|ui| {
+                        let (spot, _) =
+                            ui.allocate_exact_size(egui::Vec2::splat(10.0), egui::Sense::hover());
+                        ui.painter().circle_filled(spot.center(), 4.5, dot);
+                        ui.label(RichText::new(&link.host).font(style::medium(16.0)));
+                        if text != link.host {
+                            ui.label(
+                                RichText::new(&text)
+                                    .font(style::regular(14.0))
+                                    .color(c.muted),
+                            );
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui
+                                .button(t("Remove"))
+                                .on_hover_text(t("Remove this printer"))
+                                .clicked()
+                            {
+                                remove = Some(index);
+                            }
+                        });
                     });
                 }
                 if let Some(index) = remove {
@@ -342,12 +474,23 @@ impl App {
                     changed = true;
                 }
 
+                ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    let field = ui.add(
-                        egui::TextEdit::singleline(&mut self.new_printer)
-                            .hint_text(t("Printer address, e.g. 192.168.1.40"))
-                            .desired_width(240.0),
-                    );
+                    let field = egui::Frame::new()
+                        .fill(c.ink)
+                        .stroke(egui::Stroke::new(1.0, c.rule))
+                        .corner_radius(CornerRadius::same(6))
+                        .inner_margin(egui::Margin::symmetric(8, 5))
+                        .show(ui, |ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.new_printer)
+                                    .frame(egui::Frame::NONE)
+                                    .hint_text(t("Printer address, e.g. 192.168.1.40"))
+                                    .font(style::regular(16.0))
+                                    .desired_width(240.0),
+                            )
+                        })
+                        .inner;
                     let entered =
                         field.lost_focus() && ui.input(|input| input.key_pressed(Key::Enter));
                     let host = self.new_printer.trim().to_owned();
@@ -396,62 +539,158 @@ impl App {
     }
 }
 
+/// A printer's chip text and status dot.
+fn describe(host: &str, state: &State, c: &style::Palette) -> (String, Color32) {
+    match state {
+        State::Online { status, name } => (
+            format!(
+                "{} · {}",
+                name.clone().unwrap_or_else(|| host.to_owned()),
+                status.media_description()
+            ),
+            if state.ready_media().is_some() {
+                c.accent
+            } else {
+                c.alarm
+            },
+        ),
+        State::Offline => (tf("{host}: doesn't answer", &[("host", &host)]), c.alarm),
+        State::Checking => (tf("{host}: checking…", &[("host", &host)]), c.echo),
+    }
+}
+
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        let c = style::palette(&ctx);
         self.results(&ctx);
         self.keys(&ctx);
 
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(style::INK).inner_margin(egui::Margin::same(16)))
+        egui::Panel::top("quicklabel_header")
+            .frame(
+                egui::Frame::new()
+                    .fill(c.plate)
+                    .inner_margin(egui::Margin::symmetric(18, 12)),
+            )
+            .show_separator_line(true)
             .show(ui, |ui| {
-                let field = egui::TextEdit::multiline(&mut self.text)
-                    .id(egui::Id::unique(FIELD))
-                    .hint_text(t("Type the label text"))
-                    .font(style::regular(22.0))
-                    .desired_rows(3)
-                    .desired_width(f32::INFINITY);
-                let response = ui.add(field);
-                if !self.focused {
-                    response.request_focus();
-                    self.focused = true;
-                }
+                ui.horizontal(|ui| {
+                    style::logo(ui, 20.0, c.green);
+                    ui.add_space(6.0);
+                    let (bar, _) =
+                        ui.allocate_exact_size(egui::vec2(1.0, 22.0), egui::Sense::hover());
+                    ui.painter().rect_filled(bar, CornerRadius::ZERO, c.rule);
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(t("Quick label")).font(style::semibold(21.0)));
 
-                ui.add_space(10.0);
-                self.preview(ui);
-                ui.add_space(8.0);
-                self.printer_line(ui);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        self.language_switch(ui);
+                        ui.add_space(8.0);
+                        if style::chip(ui, t("Printers"), self.show_printers, None)
+                            .on_hover_text(t("Add or remove printers"))
+                            .clicked()
+                        {
+                            self.show_printers = !self.show_printers;
+                        }
+                    });
+                });
+            });
 
-                match &self.message {
-                    Some(Ok(text)) => {
-                        ui.label(RichText::new(text).color(style::ACCENT));
-                    }
-                    Some(Err(text)) => {
-                        ui.label(RichText::new(text).color(style::ALARM));
-                    }
-                    None if self.printing => {
-                        ui.label(RichText::new(t("Printing…")).color(style::MUTED));
-                    }
-                    None => {}
-                }
-
-                ui.add_space(6.0);
-                self.printers_section(ui);
-
-                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new(t(
-                                "Ctrl+Enter prints  ·  **bold**  *italic*  ·  Ctrl+D date  ·  Ctrl+T time  ·  Esc closes",
-                            ))
-                            .font(style::regular(14.0))
-                            .color(style::FAINT),
-                        );
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            self.language_switch(ui);
+        egui::Panel::bottom("quicklabel_footer")
+            .frame(egui::Frame::new().fill(c.ink).inner_margin(egui::Margin {
+                left: 18,
+                right: 18,
+                top: 4,
+                bottom: 16,
+            }))
+            .show_separator_line(false)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let label = if self.printers.is_empty() {
+                        t("Save as PNG")
+                    } else {
+                        t("Print")
+                    };
+                    let ready = !TextLabel::new(&self.text).is_empty()
+                        && !self.printing
+                        && (self.printers.is_empty() || self.target().is_some());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if style::primary(ui, label, "Ctrl + Enter", ready).clicked() {
+                            self.print();
+                        }
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            self.printer_line(ui);
                         });
                     });
                 });
+            });
+
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().fill(c.ink).inner_margin(egui::Margin {
+                left: 18,
+                right: 18,
+                top: 16,
+                bottom: 12,
+            }))
+            .show(ui, |ui| {
+                let id = egui::Id::unique(FIELD);
+                let focused = ctx.memory(|memory| memory.has_focus(id));
+                egui::Frame::new()
+                    .fill(c.plate)
+                    .stroke(egui::Stroke::new(
+                        if focused { 1.5 } else { 1.0 },
+                        if focused { c.green } else { c.rule },
+                    ))
+                    .corner_radius(CornerRadius::same(10))
+                    .inner_margin(egui::Margin::symmetric(14, 10))
+                    .show(ui, |ui| {
+                        let field = egui::TextEdit::multiline(&mut self.text)
+                            .id(id)
+                            .frame(egui::Frame::NONE)
+                            .hint_text(t("Type the label text"))
+                            .font(style::regular(24.0))
+                            .desired_rows(3)
+                            .desired_width(f32::INFINITY);
+                        let response = ui.add(field);
+                        if !self.focused {
+                            response.request_focus();
+                            self.focused = true;
+                        }
+                    });
+
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(4.0);
+                    ui.spacing_mut().item_spacing.x = 1.0;
+                    let hint = |text: &str| {
+                        RichText::new(text)
+                            .font(style::regular(14.0))
+                            .color(c.muted)
+                    };
+                    ui.label(hint("**").color(c.faint));
+                    ui.label(
+                        RichText::new(t("bold"))
+                            .font(style::semibold(14.0))
+                            .color(c.muted),
+                    );
+                    ui.label(hint("**").color(c.faint));
+                    ui.add_space(10.0);
+                    ui.label(hint("*").color(c.faint));
+                    ui.label(hint(t("italic")).italics());
+                    ui.label(hint("*").color(c.faint));
+                    ui.add_space(12.0);
+                    style::shortcut(ui, &["Ctrl", "D"], t("date"));
+                    style::shortcut(ui, &["Ctrl", "T"], t("time"));
+                    style::shortcut(ui, &["Esc"], t("close"));
+                });
+                ui.add_space(10.0);
+
+                if self.show_printers {
+                    self.printers_card(ui);
+                } else {
+                    self.preview(ui);
+                }
             });
 
         self.take_screenshot(&ctx);
