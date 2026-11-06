@@ -4,7 +4,9 @@ Type a few lines, press **Ctrl+Enter**: printed on the Brother QL label printer.
 
 - It opens with the last text, selected: typing replaces it, Ctrl+Enter prints it again.
   The number of labels starts at 1.
-- Enter starts a new line; `**bold**`, `*italic*`.
+- Enter starts a new line; `**bold**`, `*italic*`; Ctrl+B / Ctrl+I put them around the
+  selection or take them off. `/` brings you back to the text from anywhere in the window.
+- Copy and paste work with other programs.
 - Ctrl+D inserts today's date, Ctrl+T the time.
 - Ctrl+Enter prints and closes; Esc closes.
 - The text is as large as it fits: more lines, smaller letters. The tape is the one the printer

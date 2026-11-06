@@ -12,7 +12,7 @@ use egui::{Color32, CornerRadius, Key, Modifiers, RichText, Ui};
 
 use crate::printer::{Link, State};
 use crate::settings::{self, Cut, Layout, Settings};
-use crate::{numbering, resident, style};
+use crate::{markdown, numbering, resident, style};
 
 /// Tape assumed for the preview while no printer reports one.
 const DEFAULT_MEDIA: &str = "62";
@@ -36,9 +36,10 @@ const FIELD: &str = "quicklabel_text";
 struct Preview {
     /// Tape, layout and text it was made for.
     key: String,
-    /// Its size in dots.
-    size: egui::Vec2,
-    texture: egui::TextureHandle,
+    /// The label, a pixel per dot.
+    image: image::GrayImage,
+    /// Shrunk to the screen pixels shown (Catmull-Rom: sharp), with that size.
+    texture: Option<([u32; 2], egui::TextureHandle)>,
 }
 
 struct App {
@@ -284,7 +285,52 @@ impl App {
         state.store(ctx, id);
     }
 
+    /// Bold or italic on or off around the field's selection (Ctrl+B, Ctrl+I).
+    fn emphasis(&mut self, ctx: &egui::Context, style: markdown::Style) {
+        let id = egui::Id::unique(FIELD);
+        let mut state = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+        let end = self.text.chars().count();
+        let range = state
+            .cursor
+            .char_range()
+            .unwrap_or_else(|| CCursorRange::one(CCursor::new(end)));
+        let (start, stop) = (
+            range.primary.index.0.min(range.secondary.index.0),
+            range.primary.index.0.max(range.secondary.index.0),
+        );
+        let (text, selected) = markdown::toggle(&self.text, start..stop, style);
+        self.text = text;
+        state.cursor.set_char_range(Some(CCursorRange::two(
+            CCursor::new(selected.start),
+            CCursor::new(selected.end),
+        )));
+        state.store(ctx, id);
+        ctx.memory_mut(|memory| memory.request_focus(id));
+    }
+
     fn keys(&mut self, ctx: &egui::Context) {
+        // "/" with nothing focused: back to the text (on any keyboard layout: the typed
+        // character counts, not the key).
+        let nothing_focused = ctx.memory(|memory| memory.focused().is_none());
+        if nothing_focused {
+            let slash = ctx.input_mut(|input| {
+                let typed =
+                    |event: &egui::Event| matches!(event, egui::Event::Text(text) if text == "/");
+                let found = input.events.iter().any(typed);
+                input.events.retain(|event| !typed(event));
+                found
+            });
+            if slash {
+                ctx.memory_mut(|memory| memory.request_focus(egui::Id::unique(FIELD)));
+            }
+        }
+        if ctx.input_mut(|input| input.consume_key(Modifiers::COMMAND, Key::B)) {
+            self.emphasis(ctx, markdown::Style::Bold);
+        }
+        if ctx.input_mut(|input| input.consume_key(Modifiers::COMMAND, Key::I)) {
+            self.emphasis(ctx, markdown::Style::Italic);
+        }
+
         // Before the text field, which would take Enter.
         if ctx.input_mut(|input| input.consume_key(Modifiers::COMMAND, Key::Enter)) {
             self.print();
@@ -376,23 +422,16 @@ impl App {
             let image = label
                 .landscape(u32::from(media.print_pins), length, run)
                 .to_gray_image();
-            let size = egui::vec2(image.width() as f32, image.height() as f32);
-            let color = egui::ColorImage::from_gray(
-                [image.width() as usize, image.height() as usize],
-                image.as_raw(),
-            );
-            // Linear with mipmaps: smooth at strong reductions too.
-            let options = egui::TextureOptions {
-                mipmap_mode: Some(egui::TextureFilter::Linear),
-                ..egui::TextureOptions::LINEAR
-            };
-            let texture = ui.ctx().load_texture("quicklabel_preview", color, options);
-            self.preview = Some(Preview { key, size, texture });
+            self.preview = Some(Preview {
+                key,
+                image,
+                texture: None,
+            });
         }
-        let Some((w, h, texture)) = self
+        let Some((w, h)) = self
             .preview
             .as_ref()
-            .map(|preview| (preview.size.x, preview.size.y, preview.texture.id()))
+            .map(|preview| (preview.image.width() as f32, preview.image.height() as f32))
         else {
             return;
         };
@@ -461,8 +500,46 @@ impl App {
                 style::LIGHT.faint,
             );
         } else {
-            let print = egui::Rect::from_center_size(paper.center(), egui::vec2(w, h) * scale);
-            egui::Image::from_texture((texture, print.size())).paint_at(ui, print);
+            // Shrunk on the CPU to whole screen pixels and drawn 1:1 on the pixel grid: sharper
+            // than the GPU's filtering.
+            let pixels = [
+                ((w * scale * pixels_per_point).round() as u32).max(1),
+                ((h * scale * pixels_per_point).round() as u32).max(1),
+            ];
+            let points = egui::vec2(pixels[0] as f32, pixels[1] as f32) / pixels_per_point;
+            let corner = paper.center() - points / 2.0;
+            let corner = egui::pos2(
+                (corner.x * pixels_per_point).round() / pixels_per_point,
+                (corner.y * pixels_per_point).round() / pixels_per_point,
+            );
+            if let Some(preview) = &mut self.preview {
+                if preview
+                    .texture
+                    .as_ref()
+                    .is_none_or(|(made, _)| *made != pixels)
+                {
+                    let small = image::imageops::resize(
+                        &preview.image,
+                        pixels[0],
+                        pixels[1],
+                        image::imageops::FilterType::CatmullRom,
+                    );
+                    let color = egui::ColorImage::from_gray(
+                        [small.width() as usize, small.height() as usize],
+                        small.as_raw(),
+                    );
+                    let texture = ui.ctx().load_texture(
+                        "quicklabel_preview",
+                        color,
+                        egui::TextureOptions::NEAREST,
+                    );
+                    preview.texture = Some((pixels, texture));
+                }
+                if let Some((_, texture)) = &preview.texture {
+                    egui::Image::from_texture((texture.id(), points))
+                        .paint_at(ui, egui::Rect::from_min_size(corner, points));
+                }
+            }
         }
 
         // The sizes as dimension lines: the tape's width across it, the label's length along

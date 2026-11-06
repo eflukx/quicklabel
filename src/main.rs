@@ -20,6 +20,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod app;
+mod markdown;
 mod numbering;
 mod printer;
 mod resident;
