@@ -208,29 +208,62 @@ pub fn chip(ui: &mut Ui, text: &str, on: bool, dot: Option<Color32>) -> Response
     })
 }
 
-/// The chip of the text's direction: a small label with an upright A in front, wide for
-/// lengthwise, tall for sideways (as Brother's own software shows it).
-pub fn direction_chip(ui: &mut Ui, text: &str, sideways: bool) -> Response {
+/// The chip of the text's direction, with a small label and an upright A in front (as
+/// Brother's own software shows it): wide for lengthwise, tall for sideways. A die-cut label is
+/// a closed outline with round corners; continuous tape a strip whose edges run on, with dashed
+/// cuts where the label ends.
+pub fn direction_chip(ui: &mut Ui, text: &str, sideways: bool, continuous: bool) -> Response {
     chip_with(ui, text, true, |ui, ink, _| {
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(20.0, 16.0), Sense::hover());
-        let label = if sideways {
-            egui::vec2(11.0, 15.0)
-        } else {
-            egui::vec2(19.0, 12.0)
-        };
-        let label = egui::Rect::from_center_size(rect.center(), label);
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(22.0, 18.0), Sense::hover());
         let painter = ui.painter();
-        painter.rect_stroke(
-            label,
-            CornerRadius::same(2),
-            Stroke::new(1.3, ink),
-            egui::StrokeKind::Inside,
-        );
+        let stroke = Stroke::new(1.3, ink);
+        let size = match (sideways, continuous) {
+            (true, true) => egui::vec2(11.0, 14.0),
+            (false, true) => egui::vec2(16.0, 11.0),
+            // A die-cut label's own corners need a little more room around the A.
+            (true, false) => egui::vec2(13.0, 17.0),
+            (false, false) => egui::vec2(19.0, 13.0),
+        };
+        let label = egui::Rect::from_center_size(rect.center(), size);
+
+        if continuous {
+            // The tape runs along x when lengthwise, along y when sideways (as the preview).
+            let cut = Stroke::new(1.0, ink.gamma_multiply(0.8));
+            let dashed = |from: egui::Pos2, to: egui::Pos2| {
+                painter.extend(egui::Shape::dashed_line(&[from, to], cut, 2.0, 1.5));
+            };
+            if sideways {
+                for x in [label.left(), label.right()] {
+                    painter.line_segment(
+                        [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
+                        stroke,
+                    );
+                }
+                dashed(label.left_top(), label.right_top());
+                dashed(label.left_bottom(), label.right_bottom());
+            } else {
+                for y in [label.top(), label.bottom()] {
+                    painter.line_segment(
+                        [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
+                        stroke,
+                    );
+                }
+                dashed(label.left_top(), label.left_bottom());
+                dashed(label.right_top(), label.right_bottom());
+            }
+        } else {
+            painter.rect_stroke(
+                label,
+                CornerRadius::same(3),
+                stroke,
+                egui::StrokeKind::Inside,
+            );
+        }
         painter.text(
             label.center() + egui::vec2(0.0, 0.5),
             egui::Align2::CENTER_CENTER,
             "A",
-            semibold(10.5),
+            semibold(10.0),
             ink,
         );
     })

@@ -161,10 +161,17 @@ impl App {
     }
 
     /// The tape the label is laid out for: the target's, else 62 mm.
+    /// The `QUICKLABEL_TAPE` variable (a media id such as `62x29`) overrides the 62 mm, for
+    /// screenshots of other tapes.
     fn media(&self) -> &'static Media {
-        self.target()
-            .map(|(_, media)| media)
-            .unwrap_or_else(|| Media::by_id(DEFAULT_MEDIA).expect("62 mm is in the media table"))
+        self.target().map(|(_, media)| media).unwrap_or_else(|| {
+            std::env::var("QUICKLABEL_TAPE")
+                .ok()
+                .and_then(|id| Media::by_id(&id))
+                .unwrap_or_else(|| {
+                    Media::by_id(DEFAULT_MEDIA).expect("62 mm is in the media table")
+                })
+        })
     }
 
     /// The layout kept for `media`'s tape.
@@ -554,7 +561,7 @@ impl App {
         } else {
             t("Lengthwise")
         };
-        if style::direction_chip(ui, direction, layout.sideways)
+        if style::direction_chip(ui, direction, layout.sideways, media.is_continuous())
             .on_hover_text(t("Click or Ctrl+R turns the text"))
             .clicked()
         {
