@@ -1,5 +1,7 @@
-//! What quicklabel remembers: the printers, the language and light or dark.
+//! What quicklabel remembers: the printers, the language, light or dark, and per tape how a
+//! label is laid out.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -14,6 +16,55 @@ pub struct Settings {
     pub language: String,
     /// `light` or `dark`; empty: as Windows is set.
     pub theme: String,
+    /// How labels are laid out, per tape (the media id: `62`, `62x29`, `29`, …).
+    pub layouts: BTreeMap<String, Layout>,
+}
+
+/// How a label is laid out on one tape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Layout {
+    /// The text along the label's short side instead of its long side.
+    pub sideways: bool,
+    /// Continuous tape: the label at most this many times the tape's width long; 0: no limit.
+    pub length: u8,
+    /// Where the cutter cuts.
+    pub cut: Cut,
+}
+
+/// Where the cutter cuts: after each label, once after the batch, or not.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Cut {
+    /// After every label.
+    #[default]
+    Each,
+    /// Once after the last label.
+    Batch,
+    /// Not at all.
+    Off,
+}
+
+impl Cut {
+    /// The printer job's cut.
+    #[must_use]
+    pub fn job(self) -> chopshop_printer::job::Cut {
+        match self {
+            Self::Each => chopshop_printer::job::Cut::Each,
+            Self::Batch => chopshop_printer::job::Cut::End,
+            Self::Off => chopshop_printer::job::Cut::Off,
+        }
+    }
+}
+
+impl Default for Layout {
+    fn default() -> Self {
+        Self {
+            sideways: false,
+            length: 2,
+            cut: Cut::Each,
+        }
+    }
 }
 
 impl Settings {

@@ -43,7 +43,7 @@ pub struct Link {
     /// Its address.
     pub host: String,
     state: Arc<Mutex<State>>,
-    jobs: Sender<(Bitmap, &'static Media)>,
+    jobs: Sender<(Vec<Bitmap>, &'static Media, job::Cut)>,
     results: Receiver<Result<String, String>>,
 }
 
@@ -81,9 +81,9 @@ impl Link {
             .unwrap_or(State::Checking)
     }
 
-    /// Queues a label (a raster bitmap) for `media`.
-    pub fn print(&self, bitmap: Bitmap, media: &'static Media) {
-        let _ = self.jobs.send((bitmap, media));
+    /// Queues labels (raster bitmaps) for `media`, as one job, cut as `cut` says.
+    pub fn print(&self, labels: Vec<Bitmap>, media: &'static Media, cut: job::Cut) {
+        let _ = self.jobs.send((labels, media, cut));
     }
 
     /// Print results since the last call: the printer's name, or why not.
@@ -105,7 +105,7 @@ fn read_state(host: &str) -> State {
 fn worker(
     host: &str,
     state: &Mutex<State>,
-    jobs: &Receiver<(Bitmap, &'static Media)>,
+    jobs: &Receiver<(Vec<Bitmap>, &'static Media, job::Cut)>,
     results: &Sender<Result<String, String>>,
     wake: &dyn Fn(),
 ) {
@@ -122,7 +122,7 @@ fn worker(
             publish(read_state(host));
             next_poll = Instant::now() + POLL;
         }
-        let (bitmap, media) =
+        let (labels, media, cut) =
             match jobs.recv_timeout(next_poll.saturating_duration_since(Instant::now())) {
                 Ok(job) => job,
                 Err(RecvTimeoutError::Timeout) => continue,
@@ -133,10 +133,14 @@ fn worker(
         let fresh = read_state(host);
         let outcome = match &fresh {
             State::Online { status, name } if status.has_media(media) && status.is_ready() => {
-                raster::raster_lines(&bitmap, media)
+                labels
+                    .iter()
+                    .map(|bitmap| raster::raster_lines(bitmap, media))
+                    .collect::<Result<Vec<_>, _>>()
                     .map_err(|error| error.to_string())
-                    .and_then(|lines| {
-                        net::send_job(host, &job::job_bytes(&lines, media))
+                    .and_then(|pages| {
+                        let pages: Vec<&[_]> = pages.iter().map(Vec::as_slice).collect();
+                        net::send_job(host, &job::pages_bytes(&pages, media, cut))
                             .map_err(|error| error.to_string())
                     })
                     .map(|()| name.clone().unwrap_or_else(|| host.to_owned()))

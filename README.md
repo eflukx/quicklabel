@@ -5,9 +5,15 @@ Type a few lines, press **Ctrl+Enter**: printed on the Brother QL label printer.
 - Enter starts a new line; `**bold**`, `*italic*`.
 - Ctrl+D inserts today's date, Ctrl+T the time.
 - Ctrl+Enter prints and closes; Esc closes.
-- The text runs along the tape, as large as it fits: more lines, smaller letters. Continuous
-  tape gets as long as the text; a die-cut label is filled in whichever direction gives the
-  larger letters. The tape is the one the printer reports.
+- The text is as large as it fits: more lines, smaller letters. The tape is the one the printer
+  reports.
+- Lengthwise (along the label's long side) or Sideways (Ctrl+R). On continuous tape the label
+  is at most 1×, 2× (default) or 3× the tape's width long, or free; the text shrinks to fit.
+  Die-cut labels have their own size.
+- Cut: after each label (default), once after the batch, or off.
+- Direction, length and cut are kept per tape size.
+- Several labels at once: − n + next to Print (Ctrl+Up / Ctrl+Down), one job. `{n}` in the
+  text is the label's number from 1; `{n+12}` counts from 12; `{n+007}` keeps the zeros.
 - The first time: Printers (top right) opens by itself; add the printer's address (for example `192.168.1.40`).
   Several printers: click the one to print on.
 - English or Dutch (EN / NL, top right; at first the system's language). Light or dark as

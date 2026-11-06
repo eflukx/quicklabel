@@ -259,6 +259,36 @@ pub fn theme_button(ui: &mut Ui, dark: bool) -> Response {
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
+/// A − or + of a stepper: a round button, dimmed when not `enabled`.
+pub fn step(ui: &mut Ui, sign: &str, enabled: bool) -> Response {
+    let c = palette(ui.ctx());
+    let sense = if enabled {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(30.0), sense);
+    let fill = if enabled && response.hovered() {
+        c.green.gamma_multiply(0.35)
+    } else {
+        c.rule
+    };
+    let colour = if enabled { c.text } else { c.faint };
+    ui.painter().circle_filled(rect.center(), 14.0, fill);
+    ui.painter().text(
+        rect.center() - egui::vec2(0.0, 1.0),
+        egui::Align2::CENTER_CENTER,
+        sign,
+        semibold(20.0),
+        colour,
+    );
+    if enabled {
+        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    } else {
+        response
+    }
+}
+
 /// A key as a keycap: `Ctrl`, `Enter`.
 pub fn keycap(ui: &mut Ui, key: &str) {
     let c = palette(ui.ctx());

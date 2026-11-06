@@ -4,17 +4,29 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use chopshop_i18n::{Language, t, tf};
-use chopshop_label::TextLabel;
+use chopshop_label::{Length, Run, TextLabel};
 use chopshop_printer::Media;
 use egui::text::{CCursor, CCursorRange};
 use egui::{Color32, CornerRadius, Key, Modifiers, RichText, Ui};
 
 use crate::printer::{Link, State};
-use crate::settings::{self, Settings};
-use crate::style;
+use crate::settings::{self, Cut, Layout, Settings};
+use crate::{numbering, style};
 
 /// Tape assumed for the preview while no printer reports one.
 const DEFAULT_MEDIA: &str = "62";
+
+/// Dots per millimetre at 300 dpi.
+const DOTS_PER_MM: f32 = 300.0 / 25.4;
+
+/// Feed before and after a label on continuous tape, in dots.
+const FEED_DOTS: u32 = 35;
+
+/// The length limits offered for continuous tape: times the tape's width; 0: none.
+const LENGTHS: [u8; 4] = [0, 1, 2, 3];
+
+/// The most copies in one go.
+const MAX_COPIES: u16 = 99;
 
 /// The text field's id, for focus and its cursor.
 const FIELD: &str = "quicklabel_text";
@@ -28,6 +40,8 @@ struct App {
     preview: Option<(String, egui::TextureHandle)>,
     message: Option<Result<String, String>>,
     printing: bool,
+    /// How many labels Print makes; back to 1 each start.
+    copies: u16,
     close_at: Option<Instant>,
     focused: bool,
     show_printers: bool,
@@ -46,7 +60,7 @@ pub fn run(
         .with_title("Quick label")
         .with_icon(std::sync::Arc::new(style::window_icon()))
         .with_inner_size([680.0, 540.0])
-        .with_min_inner_size([480.0, 400.0])
+        .with_min_inner_size([620.0, 440.0])
         .with_always_on_top();
     let native = eframe::NativeOptions {
         viewport,
@@ -91,6 +105,7 @@ pub fn run(
                 preview: None,
                 message: None,
                 printing: false,
+                copies: 1,
                 close_at: None,
                 focused: false,
                 show_printers,
@@ -128,9 +143,35 @@ impl App {
             .unwrap_or_else(|| Media::by_id(DEFAULT_MEDIA).expect("62 mm is in the media table"))
     }
 
-    fn render(&self, media: &Media) -> chopshop_label::Bitmap {
-        let length = (!media.is_continuous()).then_some(u32::from(media.print_length_dots));
-        TextLabel::new(&self.text).render(u32::from(media.print_pins), length)
+    /// The layout kept for `media`'s tape.
+    fn layout(&self, media: &Media) -> Layout {
+        self.settings
+            .layouts
+            .get(media.id)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    fn set_layout(&mut self, media: &Media, layout: Layout) {
+        self.settings.layouts.insert(media.id.to_owned(), layout);
+        self.save();
+    }
+
+    /// The raster of label `index` of the run (`{n}` filled in).
+    fn render(&self, media: &Media, index: u16) -> chopshop_label::Bitmap {
+        let (length, run) = shape(media, self.layout(media));
+        TextLabel::new(&numbering::fill(&self.text, index)).render(
+            u32::from(media.print_pins),
+            length,
+            run,
+        )
+    }
+
+    /// Every label of the run.
+    fn render_all(&self, media: &Media) -> Vec<chopshop_label::Bitmap> {
+        (0..self.copies)
+            .map(|index| self.render(media, index))
+            .collect()
     }
 
     fn print(&mut self) {
@@ -139,22 +180,29 @@ impl App {
         }
 
         if self.printers.is_empty() {
-            let bitmap = self.render(self.media());
+            let labels = self.render_all(self.media());
             let dir = Settings::labels_dir();
-            let path = dir.join(format!(
-                "label_{}.png",
-                jiff::Zoned::now().strftime("%Y-%m-%d_%H.%M.%S")
-            ));
-            let saved = std::fs::create_dir_all(&dir)
+            let stamp = jiff::Zoned::now().strftime("%Y-%m-%d_%H.%M.%S").to_string();
+            let mut saved = std::fs::create_dir_all(&dir)
                 .map_err(|error| error.to_string())
-                .and_then(|()| {
+                .map(|()| dir.join(format!("label_{stamp}.png")));
+            for (index, bitmap) in labels.iter().enumerate() {
+                let name = if labels.len() > 1 {
+                    format!("label_{stamp}_{}.png", index + 1)
+                } else {
+                    format!("label_{stamp}.png")
+                };
+                let path = dir.join(name);
+                saved = saved.and_then(|_| {
                     bitmap
                         .to_gray_image()
                         .save(&path)
+                        .map(|()| path.clone())
                         .map_err(|error| error.to_string())
                 });
+            }
             self.message = Some(
-                saved.map(|()| tf("No printer: saved as {path}", &[("path", &path.display())])),
+                saved.map(|path| tf("No printer: saved as {path}", &[("path", &path.display())])),
             );
             return;
         }
@@ -163,8 +211,9 @@ impl App {
             self.message = Some(Err(t("No printer ready with tape loaded").to_owned()));
             return;
         };
-        let bitmap = self.render(media);
-        self.printers[index].print(bitmap, media);
+        let labels = self.render_all(media);
+        let cut = self.layout(media).cut.job();
+        self.printers[index].print(labels, media, cut);
         self.printing = true;
         self.message = None;
     }
@@ -207,6 +256,23 @@ impl App {
             let today = jiff::Zoned::now().strftime("%d-%m-%Y").to_string();
             self.insert(ctx, &today);
         }
+        if ctx.input_mut(|input| input.consume_key(Modifiers::COMMAND, Key::ArrowUp)) {
+            self.copies = (self.copies + 1).min(MAX_COPIES);
+        }
+        if ctx.input_mut(|input| input.consume_key(Modifiers::COMMAND, Key::ArrowDown)) {
+            self.copies = self.copies.saturating_sub(1).max(1);
+        }
+        if ctx.input_mut(|input| input.consume_key(Modifiers::COMMAND, Key::R)) {
+            let media = self.media();
+            let layout = self.layout(media);
+            self.set_layout(
+                media,
+                Layout {
+                    sideways: !layout.sideways,
+                    ..layout
+                },
+            );
+        }
         if ctx.input_mut(|input| input.consume_key(Modifiers::COMMAND, Key::T)) {
             let now = jiff::Zoned::now().strftime("%H:%M").to_string();
             self.insert(ctx, &now);
@@ -219,8 +285,14 @@ impl App {
                 self.printing = false;
                 match result {
                     Ok(printer) => {
-                        self.message =
-                            Some(Ok(tf("Printed on {printer}", &[("printer", &printer)])));
+                        self.message = Some(Ok(if self.copies > 1 {
+                            tf(
+                                "Printed {copies} × on {printer}",
+                                &[("copies", &self.copies), ("printer", &printer)],
+                            )
+                        } else {
+                            tf("Printed on {printer}", &[("printer", &printer)])
+                        }));
                         self.close_at = Some(Instant::now() + Duration::from_millis(600));
                     }
                     Err(reason) => self.message = Some(Err(reason)),
@@ -241,12 +313,13 @@ impl App {
     fn preview(&mut self, ui: &mut Ui) {
         let c = style::palette(ui.ctx());
         let media = self.media();
-        let label = TextLabel::new(&self.text);
-        let key = format!("{}|{}", media.id, self.text);
+        let label = TextLabel::new(&numbering::fill(&self.text, 0));
+        let layout = self.layout(media);
+        let (length, run) = shape(media, layout);
+        let key = format!("{}|{layout:?}|{}", media.id, self.text);
         if self.preview.as_ref().is_none_or(|(old, _)| *old != key) {
-            let length = (!media.is_continuous()).then_some(u32::from(media.print_length_dots));
             let image = label
-                .landscape(u32::from(media.print_pins), length)
+                .landscape(u32::from(media.print_pins), length, run)
                 .to_gray_image();
             let color = egui::ColorImage::from_gray(
                 [image.width() as usize, image.height() as usize],
@@ -257,7 +330,7 @@ impl App {
                     .load_texture("quicklabel_preview", color, egui::TextureOptions::LINEAR);
             self.preview = Some((key, texture));
         }
-        let Some((_, texture)) = &self.preview else {
+        let Some(texture) = self.preview.as_ref().map(|(_, texture)| texture.clone()) else {
             return;
         };
 
@@ -265,24 +338,35 @@ impl App {
         ui.allocate_rect(tray, egui::Sense::hover());
         let painter = ui.painter_at(tray);
         painter.rect_filled(tray, CornerRadius::same(12), c.tray);
+        self.layout_bar(ui, tray, media, layout);
 
-        // The paper: the print area plus the tape's unprinted edges (and the feed of
-        // continuous tape), in dots.
+        // The paper: the print area plus the tape's unprinted edges and the feed (or the
+        // die-cut label's edge), in dots; the tape runs left to right along it, else down.
         let [w, h] = texture.size();
         let (w, h) = (w as f32, h as f32);
         let continuous = media.is_continuous();
-        let edge = |pins: u16| f32::from(pins).max(12.0);
-        let feed = if continuous { 35.0 } else { 18.0 };
-        let across = h + edge(media.left_pins.min(media.right_pins)) * 2.0;
-        // Nothing typed: a blank label of a square-ish length to type onto.
+        let edge = f32::from(media.left_pins.min(media.right_pins)).max(12.0);
+        let feed = if continuous { FEED_DOTS as f32 } else { 18.0 };
+        let along_tape = run == Run::AlongTape;
+        let (print_along, print_across) = if along_tape { (w, h) } else { (h, w) };
+        let across = print_across + 2.0 * edge;
         let along = if label.is_empty() {
-            across * 1.4
+            // Nothing typed: the longest the label gets, or a square-ish one.
+            match length {
+                Length::Fixed(lines) | Length::AtMost(lines) => lines as f32 + 2.0 * feed,
+                Length::Free => across * 1.4,
+            }
         } else {
-            w + 2.0 * feed
+            print_along + 2.0 * feed
         };
-        let paper_dots = egui::vec2(along, across);
+        let paper_dots = if along_tape {
+            egui::vec2(along, across)
+        } else {
+            egui::vec2(across, along)
+        };
         let caption_height = 22.0;
         let room = tray.shrink(22.0);
+        let room = egui::Rect::from_min_max(room.min + egui::vec2(0.0, 30.0), room.max);
         let scale = (room.width() / paper_dots.x)
             .min((room.height() - caption_height) / paper_dots.y)
             .min(0.6);
@@ -294,7 +378,7 @@ impl App {
         let corner = if continuous {
             1
         } else {
-            (paper_size.y * 0.04).clamp(3.0, 10.0) as u8
+            (paper_size.min_elem() * 0.04).clamp(3.0, 10.0) as u8
         };
         let shadow = egui::Shadow {
             offset: [0, 4],
@@ -310,7 +394,7 @@ impl App {
                 paper.center(),
                 egui::Align2::CENTER_CENTER,
                 t("Your text appears here"),
-                style::regular((paper_size.y * 0.12).clamp(13.0, 22.0)),
+                style::regular((paper_size.min_elem() * 0.12).clamp(13.0, 22.0)),
                 style::LIGHT.faint,
             );
         } else {
@@ -319,7 +403,7 @@ impl App {
         }
 
         let length_mm = if continuous {
-            ((w + 2.0 * feed) / 300.0 * 25.4).round()
+            (along / DOTS_PER_MM).round()
         } else {
             f32::from(media.length_mm)
         };
@@ -344,7 +428,7 @@ impl App {
             c.muted,
         );
 
-        // The outcome, as a pill at the tray's top.
+        // The outcome, as a pill at the tray's foot.
         let pill = match &self.message {
             Some(Ok(text)) => Some((format!("✔  {text}"), c.green, c.green_ink)),
             Some(Err(text)) => Some((text.clone(), c.alarm, Color32::WHITE)),
@@ -355,12 +439,144 @@ impl App {
             let galley = painter.layout(text, style::medium(15.0), colour, tray.width() - 60.0);
             let size = galley.size() + egui::vec2(28.0, 12.0);
             let rect = egui::Rect::from_center_size(
-                egui::pos2(tray.center().x, tray.top() + 14.0 + size.y / 2.0),
+                egui::pos2(tray.center().x, tray.bottom() - 12.0 - size.y / 2.0),
                 size,
             );
             painter.add(shadow.as_shape(rect, CornerRadius::same(16)));
             painter.rect_filled(rect, CornerRadius::same(16), fill);
             painter.galley(rect.min + egui::vec2(14.0, 6.0), galley, colour);
+        }
+    }
+
+    /// How many labels: − n +, Ctrl+Up / Ctrl+Down.
+    fn copies_stepper(&mut self, ui: &mut Ui) {
+        let c = style::palette(ui.ctx());
+        let hint = t(
+            "Number of labels (Ctrl+Up / Ctrl+Down). {n} in the text numbers them, {n+12} from 12.",
+        );
+        egui::Frame::new()
+            .fill(c.plate)
+            .stroke(egui::Stroke::new(1.0, c.rule))
+            .corner_radius(CornerRadius::same(10))
+            .inner_margin(egui::Margin::symmetric(4, 4))
+            .show(ui, |ui| {
+                ui.set_height(40.0);
+                ui.spacing_mut().item_spacing.x = 2.0;
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if style::step(ui, "+", self.copies < MAX_COPIES)
+                        .on_hover_text(hint)
+                        .clicked()
+                    {
+                        self.copies += 1;
+                    }
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(34.0, 40.0),
+                        egui::Layout::top_down(egui::Align::Center),
+                        |ui| {
+                            ui.add_space(1.0);
+                            ui.label(
+                                RichText::new(self.copies.to_string()).font(style::semibold(19.0)),
+                            )
+                            .on_hover_text(hint);
+                            ui.add_space(-6.0);
+                            ui.label(
+                                RichText::new(t("labels"))
+                                    .font(style::regular(11.5))
+                                    .color(c.muted),
+                            );
+                        },
+                    );
+                    if style::step(ui, "−", self.copies > 1)
+                        .on_hover_text(hint)
+                        .clicked()
+                    {
+                        self.copies -= 1;
+                    }
+                });
+            });
+    }
+
+    /// Over the tray: lengthwise or sideways, the cut, and for continuous tape the longest
+    /// label.
+    fn layout_bar(&mut self, ui: &mut Ui, tray: egui::Rect, media: &'static Media, layout: Layout) {
+        let c = style::palette(ui.ctx());
+        let bar = egui::Rect::from_min_size(
+            tray.min + egui::vec2(14.0, 12.0),
+            egui::vec2(tray.width() - 28.0, 26.0),
+        );
+        let mut bar_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(bar)
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        );
+        let ui = &mut bar_ui;
+        ui.spacing_mut().item_spacing.x = 4.0;
+        let mut changed = layout;
+
+        for (sideways, name) in [(false, t("Lengthwise")), (true, t("Sideways"))] {
+            if style::chip(ui, name, layout.sideways == sideways, None)
+                .on_hover_text(t("Ctrl+R turns the text"))
+                .clicked()
+            {
+                changed.sideways = sideways;
+            }
+        }
+
+        ui.add_space(14.0);
+        ui.label(
+            RichText::new(t("Cut"))
+                .font(style::regular(14.0))
+                .color(c.muted),
+        );
+        for (cut, name, hint) in [
+            (Cut::Each, t("each"), t("Cut after every label")),
+            (Cut::Batch, t("batch"), t("Cut once, after the last label")),
+            (Cut::Off, t("off"), t("Don't cut: tear off by hand")),
+        ] {
+            if style::chip(ui, name, layout.cut == cut, None)
+                .on_hover_text(hint)
+                .clicked()
+            {
+                changed.cut = cut;
+            }
+        }
+
+        if media.is_continuous() {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                for times in LENGTHS.into_iter().rev() {
+                    let name = if times == 0 {
+                        t("free").to_owned()
+                    } else {
+                        format!("{times}×")
+                    };
+                    let hint = if times == 0 {
+                        t("As long as the text needs").to_owned()
+                    } else {
+                        tf(
+                            "At most {length} mm: {times} × the tape's width",
+                            &[
+                                ("length", &(u32::from(media.width_mm) * u32::from(times))),
+                                ("times", &times),
+                            ],
+                        )
+                    };
+                    if style::chip(ui, &name, layout.length == times, None)
+                        .on_hover_text(hint)
+                        .clicked()
+                    {
+                        changed.length = times;
+                    }
+                }
+                ui.label(
+                    RichText::new(t("Length"))
+                        .font(style::regular(14.0))
+                        .color(c.muted),
+                );
+            });
+        }
+
+        if changed != layout {
+            self.set_layout(media, changed);
         }
     }
 
@@ -564,6 +780,34 @@ impl App {
     }
 }
 
+/// The label's length and the way the text runs on `media`, for `layout`. Lengthwise is along
+/// the label's long side: along continuous tape, along a die-cut label's longer side.
+fn shape(media: &Media, layout: Layout) -> (Length, Run) {
+    let across = u32::from(media.print_pins);
+    let length = if media.is_continuous() {
+        match layout.length {
+            0 => Length::Free,
+            // The cut label `times` the tape's width long, feed included.
+            times => {
+                let mm = f32::from(media.width_mm) * f32::from(times);
+                Length::AtMost(((mm * DOTS_PER_MM) as u32).saturating_sub(2 * FEED_DOTS))
+            }
+        }
+    } else {
+        Length::Fixed(u32::from(media.print_length_dots))
+    };
+    let long_along_tape = match length {
+        Length::Fixed(lines) => lines > across,
+        _ => true,
+    };
+    let run = if long_along_tape != layout.sideways {
+        Run::AlongTape
+    } else {
+        Run::AcrossTape
+    };
+    (length, run)
+}
+
 /// A printer's chip text and status dot.
 fn describe(host: &str, state: &State, c: &style::Palette) -> (String, Color32) {
     match state {
@@ -634,18 +878,21 @@ impl eframe::App for App {
             .show_separator_line(false)
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    let label = if self.printers.is_empty() {
-                        t("Save as PNG")
-                    } else {
-                        t("Print")
+                    let label = match (self.printers.is_empty(), self.copies) {
+                        (true, 1) => t("Save as PNG").to_owned(),
+                        (true, copies) => tf("Save {copies} as PNG", &[("copies", &copies)]),
+                        (false, 1) => t("Print").to_owned(),
+                        (false, copies) => tf("Print {copies}", &[("copies", &copies)]),
                     };
                     let ready = !TextLabel::new(&self.text).is_empty()
                         && !self.printing
                         && (self.printers.is_empty() || self.target().is_some());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if style::primary(ui, label, "Ctrl + Enter", ready).clicked() {
+                        if style::primary(ui, &label, "Ctrl + Enter", ready).clicked() {
                             self.print();
                         }
+                        ui.add_space(4.0);
+                        self.copies_stepper(ui);
                         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                             self.printer_line(ui);
                         });
@@ -709,6 +956,21 @@ impl eframe::App for App {
                     ui.add_space(12.0);
                     style::shortcut(ui, &["Ctrl", "D"], t("date"));
                     style::shortcut(ui, &["Ctrl", "T"], t("time"));
+                    style::shortcut(ui, &["Ctrl", "R"], t("turn"));
+                    ui.label(
+                        RichText::new("{n}")
+                            .font(style::medium(14.0))
+                            .color(c.faint),
+                    );
+                    ui.label(
+                        RichText::new(t("number"))
+                            .font(style::regular(14.0))
+                            .color(c.muted),
+                    )
+                    .on_hover_text(t(
+                        "{n} becomes 1, 2, 3 … over the labels; {n+12} starts at 12",
+                    ));
+                    ui.add_space(10.0);
                     style::shortcut(ui, &["Esc"], t("close"));
                 });
                 ui.add_space(10.0);
