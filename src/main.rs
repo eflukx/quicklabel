@@ -2,7 +2,7 @@
 //!
 //! How to use: start `quicklabel` (`install.ps1` puts it in the Start menu; Settings: resident
 //! mode puts it under Ctrl+Alt+L). Type; Enter starts a new line; `**bold**`, `*italic*`; Ctrl+D inserts the date,
-//! Ctrl+T the time; Ctrl+R turns the text; Ctrl+Up/Down sets the number of labels, `{n}` numbers
+//! Ctrl+T the time; Ctrl+R turns the text; Ctrl+Up/Down sets the number of labels (Ctrl+N types it), `{n}` numbers
 //! them (`{n+12}` from 13); Ctrl+Enter prints; Esc closes. The first time, add the printer's
 //! address under Printers.
 //!

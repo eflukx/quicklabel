@@ -32,7 +32,7 @@
 "No printer yet: add one" = "Nog geen printer: voeg er een toe"
 "No printer: saved as {path}" = "Geen printer: opgeslagen als {path}"
 "number" = "nummer"
-"Number of labels (Ctrl+Up / Ctrl+Down). {n} in the text numbers them, {n+12} from 13." = "Aantal labels (Ctrl+Omhoog / Ctrl+Omlaag). {n} in de tekst nummert ze, {n+12} vanaf 13."
+"Number of labels (Ctrl+N to type it, Ctrl+Up / Ctrl+Down). {n} in the text numbers them, {n+12} from 13." = "Aantal labels (Ctrl+N om het te typen, Ctrl+Omhoog / Ctrl+Omlaag). {n} in de tekst nummert ze, {n+12} vanaf 13."
 "off" = "uit"
 "Off, but still running" = "Uit, maar draait nog"
 "Off: the Start menu shortcut has the key" = "Uit: de snelkoppeling in het startmenu heeft de toets"

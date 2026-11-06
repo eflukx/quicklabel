@@ -33,6 +33,9 @@ const LENGTHS: [u8; 4] = [0, 1, 2, 3];
 /// The most copies in one go.
 const MAX_COPIES: u16 = 99;
 
+/// The number of labels' field (Ctrl+N), for focus.
+const COPIES_FIELD: &str = "copies";
+
 /// The text field's id, for focus and its cursor.
 const FIELD: &str = "quicklabel_text";
 
@@ -59,6 +62,8 @@ struct App {
     printing: bool,
     /// How many labels Print makes; back to 1 each start.
     copies: u16,
+    /// The number of labels as being typed (Ctrl+N or a click on it).
+    copies_typed: Option<String>,
     /// Whether the resident process runs, and when that was asked.
     resident_running: Option<(bool, Instant)>,
     /// Why switching resident mode failed.
@@ -142,6 +147,7 @@ pub fn run(
                 message_since: None,
                 printing: false,
                 copies: 1,
+                copies_typed: None,
                 resident_running: None,
                 resident_error: None,
                 search: None,
@@ -314,6 +320,20 @@ impl App {
         ctx.memory_mut(|memory| memory.request_focus(id));
     }
 
+    /// The number of labels into its field, selected: typing replaces it.
+    fn type_copies(&mut self, ctx: &egui::Context) {
+        let typed = self.copies.to_string();
+        let id = egui::Id::unique(COPIES_FIELD);
+        let mut state = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+        state.cursor.set_char_range(Some(CCursorRange::two(
+            CCursor::new(0),
+            CCursor::new(typed.len()),
+        )));
+        state.store(ctx, id);
+        self.copies_typed = Some(typed);
+        ctx.memory_mut(|memory| memory.request_focus(id));
+    }
+
     fn keys(&mut self, ctx: &egui::Context) {
         // "/" with nothing focused: back to the text (on any keyboard layout: the typed
         // character counts, not the key).
@@ -341,8 +361,17 @@ impl App {
         if ctx.input_mut(|input| input.consume_key(Modifiers::COMMAND, Key::Enter)) {
             self.print();
         }
+        if ctx.input_mut(|input| input.consume_key(Modifiers::COMMAND, Key::N)) {
+            self.type_copies(ctx);
+        }
         if ctx.input_mut(|input| input.consume_key(Modifiers::NONE, Key::Escape)) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            // Typing the number: back to the text, else close.
+            if self.copies_typed.is_some() {
+                self.copies_typed = None;
+                ctx.memory_mut(|memory| memory.request_focus(egui::Id::unique(FIELD)));
+            } else {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
         }
         if ctx.input_mut(|input| input.consume_key(Modifiers::COMMAND, Key::D)) {
             let today = jiff::Zoned::now().strftime("%d-%m-%Y").to_string();
@@ -664,7 +693,7 @@ impl App {
     fn copies_stepper(&mut self, ui: &mut Ui) {
         let c = style::palette(ui.ctx());
         let hint = t(
-            "Number of labels (Ctrl+Up / Ctrl+Down). {n} in the text numbers them, {n+12} from 13.",
+            "Number of labels (Ctrl+N to type it, Ctrl+Up / Ctrl+Down). {n} in the text numbers them, {n+12} from 13.",
         );
         egui::Frame::new()
             .fill(c.plate)
@@ -686,10 +715,41 @@ impl App {
                         egui::Layout::top_down(egui::Align::Center),
                         |ui| {
                             ui.add_space(1.0);
-                            ui.label(
-                                RichText::new(self.copies.to_string()).font(style::semibold(19.0)),
-                            )
-                            .on_hover_text(hint);
+                            if let Some(typed) = &mut self.copies_typed {
+                                let field = ui.add(
+                                    egui::TextEdit::singleline(typed)
+                                        .id(egui::Id::unique(COPIES_FIELD))
+                                        .font(style::semibold(19.0))
+                                        .align(egui::Align2::CENTER_CENTER)
+                                        .char_limit(2)
+                                        .frame(egui::Frame::NONE)
+                                        .margin(egui::Margin::ZERO)
+                                        .desired_width(34.0),
+                                );
+                                typed.retain(|c| c.is_ascii_digit());
+                                if let Ok(copies) = typed.parse::<u16>() {
+                                    self.copies = copies.clamp(1, MAX_COPIES);
+                                }
+                                // Enter or a click elsewhere: done, back to the text.
+                                if field.lost_focus() {
+                                    self.copies_typed = None;
+                                    ui.ctx().memory_mut(|memory| {
+                                        memory.request_focus(egui::Id::unique(FIELD));
+                                    });
+                                }
+                            } else if ui
+                                .add(
+                                    egui::Label::new(
+                                        RichText::new(self.copies.to_string())
+                                            .font(style::semibold(19.0)),
+                                    )
+                                    .sense(egui::Sense::click()),
+                                )
+                                .on_hover_text(hint)
+                                .clicked()
+                            {
+                                self.type_copies(ui.ctx());
+                            }
                             ui.add_space(-6.0);
                             ui.label(
                                 RichText::new(t("labels"))
