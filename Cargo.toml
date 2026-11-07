@@ -2,7 +2,7 @@
 name = "quicklabel"
 description = "Quick label: type a few lines, Ctrl+Enter prints them on a Brother QL."
 default-run = "quicklabel"
-version = "0.31.1"
+version = "0.31.2"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"

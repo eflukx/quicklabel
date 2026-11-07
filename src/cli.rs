@@ -297,6 +297,8 @@ fn ask_printers(addresses: &[String]) -> Vec<Answer> {
             .iter()
             .find(|(_, serial, _)| usb::has_serial(address, serial));
         let (status, same_as) = match twin {
+            // Unplugged, whatever the network says (Windows knows, the printer isn't asked).
+            _ if !usb::is_present(address) => (Err("not plugged in".to_owned()), None),
             Some((network, _, status)) => (Ok(status.clone()), Some(*network)),
             None => (
                 usb::query_status(address).map_err(|error| error.to_string()),

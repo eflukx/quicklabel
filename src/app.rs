@@ -10,7 +10,7 @@ use ql_raster::Media;
 use ql_raster::job::Resolution;
 use ql_raster::label::{Length, Run, TextLabel, Typeface};
 
-use crate::printer::{Link, State};
+use crate::printer::{Link, Outcome, State};
 use crate::settings::{self, Cut, Layout, Settings};
 use crate::{markdown, numbering, resident, style};
 
@@ -60,6 +60,9 @@ struct App {
     /// The message last seen and since when: a success fades after [`MESSAGE_SHOWN`].
     message_since: Option<(Result<String, String>, Instant)>,
     printing: bool,
+    /// Automatic: the printers this print was tried on and didn't take it (nothing sent), so
+    /// it goes to the next ready one.
+    tried: Vec<usize>,
     /// How many labels Print makes; back to 1 each start.
     copies: u16,
     /// The number of labels as being typed (Ctrl+N or a click on it).
@@ -146,6 +149,7 @@ pub fn run(
                 settings,
                 printers,
                 chosen: None,
+                tried: Vec::new(),
                 text,
                 preview: None,
                 message: None,
@@ -177,6 +181,9 @@ impl App {
     /// The printer to use and its tape, when it can print.
     fn target(&self) -> Option<(usize, &'static Media)> {
         let ready = |index: usize| {
+            if self.chosen.is_none() && self.tried.contains(&index) {
+                return None;
+            }
             self.printers[index]
                 .state()
                 .ready_media()
@@ -257,7 +264,12 @@ impl App {
             return;
         }
         self.keep_text();
+        self.tried.clear();
+        self.send();
+    }
 
+    /// Sends the label to the target (Automatic: one not tried yet for this print).
+    fn send(&mut self) {
         if self.printers.is_empty() {
             let labels = self.render_all(self.media(), Resolution::Normal);
             let dir = Settings::labels_dir();
@@ -288,8 +300,10 @@ impl App {
 
         let Some((index, media)) = self.target() else {
             self.message = Some(Err(t("No printer ready with tape loaded").to_owned()));
+            self.tried.clear();
             return;
         };
+        self.tried.push(index);
         let resolution = self.resolution(index);
         let labels = self.render_all(media, resolution);
         let cut = self.layout(media).cut.job();
@@ -439,24 +453,36 @@ impl App {
     }
 
     fn results(&mut self, ctx: &egui::Context) {
-        for link in &self.printers {
-            for result in link.results() {
-                self.printing = false;
-                match result {
-                    Ok(printer) => {
-                        self.message = Some(Ok(if self.copies > 1 {
-                            tf(
-                                "Printed {copies} × on {printer}",
-                                &[("copies", &self.copies), ("printer", &printer)],
-                            )
-                        } else {
-                            tf("Printed on {printer}", &[("printer", &printer)])
-                        }));
-                        if self.settings.close_after_print {
-                            self.close_at = Some(Instant::now() + Duration::from_millis(600));
-                        }
+        let outcomes: Vec<Outcome> = self.printers.iter().flat_map(Link::results).collect();
+        for outcome in outcomes {
+            self.printing = false;
+            match outcome {
+                Outcome::Printed(printer) => {
+                    self.tried.clear();
+                    self.message = Some(Ok(if self.copies > 1 {
+                        tf(
+                            "Printed {copies} × on {printer}",
+                            &[("copies", &self.copies), ("printer", &printer)],
+                        )
+                    } else {
+                        tf("Printed on {printer}", &[("printer", &printer)])
+                    }));
+                    if self.settings.close_after_print {
+                        self.close_at = Some(Instant::now() + Duration::from_millis(600));
                     }
-                    Err(reason) => self.message = Some(Err(reason)),
+                }
+                // Automatic: the next ready printer, if there is one; else this reason.
+                Outcome::NotSent(reason) if self.chosen.is_none() => {
+                    if self.target().is_some() {
+                        self.send();
+                    } else {
+                        self.tried.clear();
+                        self.message = Some(Err(reason));
+                    }
+                }
+                Outcome::NotSent(reason) | Outcome::Failed(reason) => {
+                    self.tried.clear();
+                    self.message = Some(Err(reason));
                 }
             }
         }

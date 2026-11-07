@@ -8,6 +8,10 @@
 //! tell when: the time the printer may still be with USB ([`USB_RELEASE`]) and the tape
 //! takes, then until the printer is ready again ([`NOT_READY_MAX`] at most).
 //!
+//! A USB printer is first looked for among the devices Windows has plugged in
+//! ([`usb::is_present`], no request to the printer): unplugged is offline at once, whatever
+//! the network says.
+//!
 //! A USB printer that also answers on the network (the same serial) isn't asked over USB at
 //! all: its status is the network's (SNMP, from the network card: it doesn't hold the
 //! printer). Only a job on its USB link reads the status there, right before.
@@ -111,6 +115,17 @@ impl State {
     }
 }
 
+/// How a job ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Outcome {
+    /// Printed, on the printer with this name.
+    Printed(String),
+    /// Nothing went out (offline, an error, other tape): another printer may take it.
+    NotSent(String),
+    /// Sent, and then it failed: maybe partly printed, so not sent again elsewhere.
+    Failed(String),
+}
+
 /// Labels (raster bitmaps) for a medium, cut and at a resolution: one job.
 type Job = (Vec<Bitmap>, &'static Media, job::Cut, job::Resolution);
 
@@ -120,7 +135,7 @@ pub struct Link {
     pub host: String,
     state: Arc<Mutex<State>>,
     jobs: Sender<Job>,
-    results: Receiver<Result<String, String>>,
+    results: Receiver<Outcome>,
 }
 
 impl Link {
@@ -175,8 +190,8 @@ impl Link {
         matches!(self.state(), State::Online { status, .. } if status.model.high_resolution())
     }
 
-    /// Print results since the last call: the printer's name, or why not.
-    pub fn results(&self) -> Vec<Result<String, String>> {
+    /// How the jobs since the last call ended.
+    pub fn results(&self) -> Vec<Outcome> {
         self.results.try_iter().collect()
     }
 }
@@ -216,6 +231,9 @@ fn note_network(host: &str, status: Option<&Status>) {
 
 /// The state for polling: a USB printer that answers on the network from there.
 fn poll_state(host: &str) -> State {
+    if usb::is_usb(host) && !usb::is_present(host) {
+        return State::Offline;
+    }
     if usb::is_usb(host)
         && let Some(status) = network_status(host)
     {
@@ -253,6 +271,9 @@ fn read_state(host: &str) -> State {
 
 /// On USB the status is all there is: the model from it, "USB" as its name.
 fn read_usb_state(host: &str) -> State {
+    if !usb::is_present(host) {
+        return State::Offline;
+    }
     match usb::query_status(host) {
         Ok(status) => State::Online {
             model: Some(format!("Brother {}", status.model)),
@@ -267,7 +288,7 @@ fn worker(
     host: &str,
     state: &Mutex<State>,
     jobs: &Receiver<Job>,
-    results: &Sender<Result<String, String>>,
+    results: &Sender<Outcome>,
     wake: &dyn Fn(),
 ) {
     let publish = |new: State| {
@@ -323,6 +344,7 @@ fn worker(
                     .map(|bitmap| raster::raster_lines_at(bitmap, media, resolution))
                     .collect::<Result<Vec<_>, _>>()
                     .map_err(|error| error.to_string())
+                    .map_err(Outcome::NotSent)
                     .and_then(|pages| {
                         let page_refs: Vec<&[_]> = pages.iter().map(Vec::as_slice).collect();
                         // TIFF on models that take it: a fraction of the data.
@@ -340,31 +362,37 @@ fn worker(
                             net::send_job(host, &bytes)
                                 .map(|()| usb_release() + print_time(&pages, resolution))
                         }
-                        .map_err(|error| error.to_string())
+                        .map_err(|error| Outcome::Failed(error.to_string()))
                     })
             }
-            State::Online { status, .. } if !status.is_ready() => Err(tf(
+            State::Online { status, .. } if !status.is_ready() => Err(Outcome::NotSent(tf(
                 "{host} reports {errors}",
                 &[
                     ("host", &host),
                     ("errors", &status.error_names().join(", ")),
                 ],
-            )),
-            State::Online { status, .. } => Err(tf(
+            ))),
+            State::Online { status, .. } => Err(Outcome::NotSent(tf(
                 "{host} now has {tape} loaded",
                 &[("host", &host), ("tape", &status.media_description())],
-            )),
-            _ => Err(tf("{host} doesn't answer", &[("host", &host)])),
+            ))),
+            _ => Err(Outcome::NotSent(tf(
+                "{host} doesn't answer",
+                &[("host", &host)],
+            ))),
         };
-        let outcome = sent.as_ref().map(|_| match &fresh {
-            State::Online { name, model, .. } => name
-                .clone()
-                .or_else(|| model.clone())
-                .unwrap_or_else(|| host.to_owned()),
-            _ => host.to_owned(),
-        });
+        let outcome = match &sent {
+            Ok(_) => Outcome::Printed(match &fresh {
+                State::Online { name, model, .. } => name
+                    .clone()
+                    .or_else(|| model.clone())
+                    .unwrap_or_else(|| host.to_owned()),
+                _ => host.to_owned(),
+            }),
+            Err(outcome) => outcome.clone(),
+        };
         publish(fresh);
-        let _ = results.send(outcome.map_err(Clone::clone));
+        let _ = results.send(outcome);
         wake();
 
         // Printed: hold the polling for the time it takes (after what still prints), then
