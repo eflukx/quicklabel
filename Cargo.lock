@@ -2554,6 +2554,7 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 [[package]]
 name = "ql-raster"
 version = "0.2.0"
+source = "git+https://github.com/eflukx/ql-raster?branch=v0.2#0998ecaf7ff2b83119cbc7dbda5f54a13bdd64a8"
 dependencies = [
  "ab_glyph",
  "bitflags 2.13.2",
