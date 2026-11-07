@@ -21,6 +21,7 @@
 
 mod app;
 mod cli;
+mod i18n;
 mod markdown;
 mod numbering;
 mod printer;
@@ -44,7 +45,7 @@ fn main() -> eframe::Result {
         std::process::exit(2);
     }
 
-    chopshop_i18n::install_dutch(DUTCH);
+    crate::i18n::install_dutch(DUTCH);
     if args.resident {
         run_resident();
         return Ok(());
@@ -91,10 +92,10 @@ fn run_resident() {
     #[cfg(windows)]
     {
         let settings = settings::Settings::load();
-        chopshop_i18n::set_language(if settings.language.is_empty() {
+        crate::i18n::set_language(if settings.language.is_empty() {
             settings::system_language()
         } else {
-            chopshop_i18n::Language::from_code(&settings.language)
+            crate::i18n::Language::from_code(&settings.language)
         });
         if let Err(error) = resident::run(settings.hotkey()) {
             let log = settings::Settings::path().with_file_name("resident.log");
@@ -113,10 +114,8 @@ mod tests {
 
     #[test]
     fn every_text_has_a_dutch_one() {
-        let missing = chopshop_i18n::check::missing(
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
-            DUTCH,
-        );
+        let missing =
+            crate::i18n::check::missing(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), DUTCH);
         assert!(
             missing.is_empty(),
             "not in i18n/nl.toml:\n{}",
@@ -126,7 +125,7 @@ mod tests {
 
     #[test]
     fn dutch_keeps_the_placeholders() {
-        let wrong = chopshop_i18n::check::placeholder_mismatches(DUTCH);
+        let wrong = crate::i18n::check::placeholder_mismatches(DUTCH);
         assert!(wrong.is_empty(), "other placeholders: {wrong:?}");
     }
 }

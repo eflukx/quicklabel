@@ -54,9 +54,14 @@ needed: the fonts and texts are inside the exe. Settings: `%APPDATA%\iotta\quick
 `build.rs` links `assets/icon.ico` into the Windows exe (needs `x86_64-w64-mingw32-windres`).
 
 ```bash
-cargo build --release -p quicklabel --target x86_64-pc-windows-gnu
-cargo run -p quicklabel -- [--text "…"] [--screenshot shot.png] [--dark | --light]
+cargo build --release --target x86_64-pc-windows-gnu      # from Linux/WSL, with mingw-w64
+cargo run -- [--text "…"] [--screenshot shot.png] [--dark | --light]
+cargo test                                                # includes: every text has a Dutch one
 ```
+
+Printing, label drawing and the typefaces come from
+[ql-raster](https://github.com/eflukx/ql-raster) (a path dependency for now, see `Cargo.toml`).
+Texts are English in the code, wrapped in `t("…")` / `tf("…")`, and Dutch in `i18n/nl.toml`.
 
 ## From the command line
 
@@ -89,3 +94,8 @@ quicklabel --list-printers                       :: the printers and their numbe
 
 `QUICKLABEL_JOB=x.bin` saves the job's bytes instead of printing; `QL_USB_TRACE=1` logs every
 USB read and write; `--abort usb:…` stops a job a USB printer hangs on.
+
+## License
+
+MIT or Apache-2.0, at your option. Barlow Semi Condensed is under the SIL Open Font License
+(`assets/fonts/OFL-Barlow.txt`). The iotta name and logo are iotta's.

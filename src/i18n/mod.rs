@@ -3,8 +3,8 @@
 //! How to use: an app installs its Dutch catalog at start ([`install_dutch`], usually
 //! `include_str!` of its `nl.toml`) and picks the language ([`set_language`]). Wrap a text the
 //! user reads in [`t`] (`t("Print label")`), or [`tf`] when it has values
-//! (`tf("Print again ({n} printed)", &[("n", &count)])`, named `{placeholders}`); mark texts in
-//! constant lists with [`n`]. The app's test calls [`check::missing`] and
+//! (`tf("Print again ({n} printed)", &[("n", &count)])`, named `{placeholders}`). The app's
+//! test calls [`check::missing`] and
 //! [`check::placeholder_mismatches`], so no text goes without its Dutch one.
 //!
 //! Working principle: gettext style. The English text is the key; a text the catalog misses
@@ -16,6 +16,7 @@ use std::fmt::Display;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU8, Ordering};
 
+#[cfg(test)]
 pub mod check;
 
 /// A language of the GUI.
@@ -55,15 +56,6 @@ impl Language {
         match self {
             Self::English => "EN",
             Self::Dutch => "NL",
-        }
-    }
-
-    /// The language's own name: `English`, `Nederlands`.
-    #[must_use]
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::English => "English",
-            Self::Dutch => "Nederlands",
         }
     }
 }
@@ -118,21 +110,6 @@ pub fn t(text: &'static str) -> &'static str {
         Language::English => text,
         Language::Dutch => dutch(text).unwrap_or(text),
     }
-}
-
-/// [`t`] for a text that isn't `'static` (a name built at runtime).
-#[must_use]
-pub fn t_dyn(text: &str) -> String {
-    match language() {
-        Language::English => text.to_owned(),
-        Language::Dutch => dutch(text).unwrap_or(text).to_owned(),
-    }
-}
-
-/// Marks a text in a constant list for the catalog check; [`t`] translates it where shown.
-#[must_use]
-pub const fn n(text: &'static str) -> &'static str {
-    text
 }
 
 /// [`t`] with values: each `{name}` replaced by its value.

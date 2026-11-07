@@ -1,0 +1,7 @@
+# Google's Rust style guide (docs/CONVENTIONS.md). The last three options need the nightly
+# rustfmt: run `cargo +nightly fmt --all` after changing imports. Stable rustfmt warns about them
+# and keeps what nightly made.
+max_width = 100
+imports_granularity = "Module"
+hex_literal_case = "Lower"
+format_macro_matchers = true

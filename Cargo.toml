@@ -3,21 +3,26 @@ name = "quicklabel"
 description = "Quick label: type a few lines, Ctrl+Enter prints them on a Brother QL."
 default-run = "quicklabel"
 version = "0.31.1"
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+authors = ["iotta <rogier@iotta.nl>"]
+keywords = ["brother", "label", "printer", "ql-710w"]
+categories = ["gui"]
 
 [dependencies]
-chopshop-i18n.workspace = true
-ql-raster.workspace = true
-clap.workspace = true
-eframe.workspace = true
-egui.workspace = true
-image.workspace = true
-jiff.workspace = true
-serde.workspace = true
-serde_json.workspace = true
+# Brother QL printing and label drawing. A path for now (it lives on the Windows side); a git
+# dependency on github.com/eflukx/ql-raster once that's pushed.
+ql-raster = { path = "/mnt/c/Users/Rogier/code/ql-raster" }
+clap = { version = "4.6", features = ["derive"] }
+eframe = { version = "0.37", default-features = false, features = ["clipboard", "default_fonts", "glow", "persistence", "wayland", "x11"] }
+egui = "0.37"
+image = { version = "0.25", default-features = false, features = ["png"] }
+jiff = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 sys-locale = "0.3"
+toml = "1.1"
 
 # Resident mode: the hotkey held by a small background process (Windows only).
 [target.'cfg(windows)'.dependencies]
@@ -26,5 +31,15 @@ tray-icon = "0.26"
 winit = "0.30"
 windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+unwrap_used = "warn"
+must_use_candidate = "warn"
+
+# A small exe to hand out: no debug symbols, link-time optimised.
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1

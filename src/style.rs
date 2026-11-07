@@ -1,6 +1,6 @@
 //! The look: iotta's green and Barlow, light or dark as Windows is set.
 //!
-//! Working principle: two palettes (ChopShop's Fresh and Graphite). egui gets a style for each
+//! Working principle: two palettes (iotta's Fresh and Graphite). egui gets a style for each
 //! theme and follows the system; the drawing code asks [`palette`] for the colours of the theme
 //! shown. Plates on a soft background, no borders but a hairline, the iotta green for what acts.
 
@@ -44,7 +44,7 @@ pub struct Palette {
     pub dark: bool,
 }
 
-/// Light: ChopShop's Fresh.
+/// Light: iotta's Fresh.
 pub const LIGHT: Palette = Palette {
     ink: Color32::from_rgb(0xf4, 0xf6, 0xf3),
     plate: Color32::from_rgb(0xff, 0xff, 0xff),
@@ -62,7 +62,7 @@ pub const LIGHT: Palette = Palette {
     dark: false,
 };
 
-/// Dark: ChopShop's Graphite.
+/// Dark: iotta's Graphite.
 pub const DARK: Palette = Palette {
     ink: Color32::from_rgb(0x15, 0x17, 0x19),
     plate: Color32::from_rgb(0x20, 0x23, 0x26),
@@ -114,15 +114,15 @@ pub fn install(ctx: &egui::Context) {
     let faces: [(&str, &'static [u8]); 3] = [
         (
             "barlow",
-            include_bytes!("../../../assets/fonts/BarlowSemiCondensed-Regular.ttf"),
+            include_bytes!("../assets/fonts/BarlowSemiCondensed-Regular.ttf"),
         ),
         (
             "medium",
-            include_bytes!("../../../assets/fonts/BarlowSemiCondensed-Medium.ttf"),
+            include_bytes!("../assets/fonts/BarlowSemiCondensed-Medium.ttf"),
         ),
         (
             "semibold",
-            include_bytes!("../../../assets/fonts/BarlowSemiCondensed-SemiBold.ttf"),
+            include_bytes!("../assets/fonts/BarlowSemiCondensed-SemiBold.ttf"),
         ),
     ];
     let fallbacks = fonts
@@ -517,10 +517,9 @@ pub fn primary(ui: &mut Ui, text: &str, key: &str, enabled: bool) -> Response {
 /// The iotta logo (`assets/label/brands/iotta.png`) `height` high in `colour`.
 pub fn logo(ui: &mut Ui, height: f32, colour: Color32) -> Response {
     static LOGO: LazyLock<egui::ColorImage> = LazyLock::new(|| {
-        let image =
-            image::load_from_memory(include_bytes!("../../../assets/label/brands/iotta.png"))
-                .expect("embedded logo is a valid PNG")
-                .to_rgba8();
+        let image = image::load_from_memory(include_bytes!("../assets/iotta.png"))
+            .expect("embedded logo is a valid PNG")
+            .to_rgba8();
         let (width, height) = (image.width() as usize, image.height() as usize);
         egui::ColorImage {
             size: [width, height],

@@ -67,7 +67,7 @@ mod windows {
     use std::process::Command;
     use std::time::{Duration, Instant};
 
-    use chopshop_i18n::{t, tf};
+    use crate::i18n::{t, tf};
     use global_hotkey::hotkey::HotKey;
     use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
     use winit::application::ApplicationHandler;

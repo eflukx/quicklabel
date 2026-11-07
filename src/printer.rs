@@ -16,7 +16,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use chopshop_i18n::tf;
+use crate::i18n::tf;
 use ql_raster::label::Bitmap;
 use ql_raster::{Media, Status, job, net, raster, usb};
 

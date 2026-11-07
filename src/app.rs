@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use chopshop_i18n::{Language, t, tf};
+use crate::i18n::{Language, t, tf};
 use egui::text::{CCursor, CCursorRange};
 use egui::{Color32, CornerRadius, Key, Modifiers, RichText, Ui};
 use ql_raster::Media;
@@ -117,7 +117,7 @@ pub fn run(
             if let Some(theme) = theme.or(saved) {
                 creation.egui_ctx.set_theme(theme);
             }
-            chopshop_i18n::set_language(if settings.language.is_empty() {
+            crate::i18n::set_language(if settings.language.is_empty() {
                 settings::system_language()
             } else {
                 Language::from_code(&settings.language)
@@ -982,11 +982,11 @@ impl App {
             .collect();
         let current = Language::ALL
             .iter()
-            .position(|language| *language == chopshop_i18n::language())
+            .position(|language| *language == crate::i18n::language())
             .unwrap_or(0);
         if let Some(next) = style::segmented(ui, &names, current) {
             let language = Language::ALL[next];
-            chopshop_i18n::set_language(language);
+            crate::i18n::set_language(language);
             self.settings.language = language.code().to_owned();
             self.save();
         }

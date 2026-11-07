@@ -50,6 +50,10 @@ pub fn texts_in(source: &str) -> Vec<String> {
 fn sources(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
     for entry in std::fs::read_dir(dir).expect("source dir") {
         let path = entry.expect("entry").path();
+        // This module's own examples and test texts aren't the app's.
+        if path.is_dir() && path.file_name().is_some_and(|name| name == "i18n") {
+            continue;
+        }
         if path.is_dir() {
             sources(&path, out);
         } else if path.extension().is_some_and(|ext| ext == "rs") {
@@ -62,7 +66,7 @@ fn sources(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
 /// `file: "text"`.
 #[must_use]
 pub fn missing(dir: &Path, catalog: &str) -> Vec<String> {
-    let entries = crate::parse(catalog).unwrap_or_default();
+    let entries = super::parse(catalog).unwrap_or_default();
     let mut files = Vec::new();
     sources(dir, &mut files);
 
@@ -92,7 +96,7 @@ pub fn placeholder_mismatches(catalog: &str) -> Vec<String> {
         names.sort();
         names
     };
-    crate::parse(catalog)
+    super::parse(catalog)
         .unwrap_or_default()
         .iter()
         .filter(|(english, dutch)| names(english) != names(dutch))

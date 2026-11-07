@@ -182,12 +182,12 @@ impl Settings {
 /// The language when the settings don't say: Dutch when the system's is (Windows: the user's
 /// display language).
 #[must_use]
-pub fn system_language() -> chopshop_i18n::Language {
+pub fn system_language() -> crate::i18n::Language {
     let dutch = sys_locale::get_locale()
         .is_some_and(|locale| locale.to_ascii_lowercase().starts_with("nl"));
     if dutch {
-        chopshop_i18n::Language::Dutch
+        crate::i18n::Language::Dutch
     } else {
-        chopshop_i18n::Language::English
+        crate::i18n::Language::English
     }
 }
