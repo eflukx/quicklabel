@@ -60,7 +60,7 @@ cargo test                                                # includes: every text
 ```
 
 Printing, label drawing and the typefaces come from
-[ql-raster](https://github.com/eflukx/ql-raster) (a path dependency for now, see `Cargo.toml`).
+[ql-raster](https://github.com/eflukx/ql-raster).
 Texts are English in the code, wrapped in `t("…")` / `tf("…")`, and Dutch in `i18n/nl.toml`.
 
 ## From the command line

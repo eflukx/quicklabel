@@ -6,8 +6,8 @@
 - Windows is the production platform: develop on WSL, cross-compile with
   `--target x86_64-pc-windows-gnu`, test the `.exe`. Every build also goes to
   `C:\Users\Rogier\chopshop\quicklabel\` (with `quicklabel.com` and `install.ps1`).
-- Printing and label drawing live in ql-raster (`/mnt/c/Users/Rogier/code/ql-raster`, path
-  dependency; build it with `RUSTC_WRAPPER= CARGO_TARGET_DIR=~/.cache/ql-raster-target`).
+- Printing and label drawing live in ql-raster (git dependency, branch `v0.2`; locally patched to
+  `/mnt/c/Users/Rogier/code/ql-raster` by the uncommitted `.cargo/config.toml`; build it with `RUSTC_WRAPPER= CARGO_TARGET_DIR=~/.cache/ql-raster-target`).
   Generic printing code goes there, not here. Never depend on ChopShop (iotta-internal).
 - Map: `src/app.rs` window, `src/cli.rs` command line, `src/printer.rs` the print worker and
   polling, `src/resident.rs` background process and hotkey, `src/i18n/` texts, `i18n/nl.toml`
