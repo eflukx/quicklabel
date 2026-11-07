@@ -1,0 +1,35 @@
+# Quick label revisions
+
+Quick label's own versions. Up to 0.31.0 it shared its version number with ChopShop, which it
+was part of (0.17.0 inside ChopShop, its own exe from 0.18.0); these are the rows that concern it.
+
+| Version | Date | What changed | Commit |
+|---|---|---|---|
+| 0.17.0 | 2026-11-06 | Quick label (`chopshop quick`, Windows hotkey Ctrl+Alt+L via `tools/install-quick-label.ps1`): type, Ctrl+Enter prints on the loaded tape, text as large as it fits, `**bold**` / `*italic*`, Ctrl+D date, Ctrl+T time. Windows exe is a GUI program now (no console window; the CLI attaches to its console). Dutch: gefaald. | 35e1968.. |
+| 0.18.0 | 2026-11-06 | Quick label moves out of ChopShop into its own exe `quicklabel.exe` (one file, fonts and Dutch inside; printers and language set up in the window, kept in `%APPDATA%`; `install.ps1` copies it and sets Ctrl+Alt+L). ChopShop is a console program again, no unsafe at all. Shared `chopshop-i18n` crate. Release builds stripped and LTO: quicklabel 7.9 MB, chopshop 12 MB. | 93b4ea6.. |
+| 0.19.0 | 2026-11-06 | Quick label in iotta style: header with the iotta logo, text on a card, the label previewed as paper on a tray with its size, outcome as a pill, printer chips with status dot, green Print button, keycap hints; Printers as a card (top right). Light or dark as Windows is set (`--dark`, `--light`). App icon (green with a label) on the window and in the exe. | 6e51ec7.. |
+| 0.19.1 | 2026-11-06 | Quick label: moon / sun button in the header switches light and dark, remembered in the settings. | 5200eff.. |
+| 0.20.0 | 2026-11-06 | Quick label: lengthwise or sideways (Ctrl+R); on continuous tape a length limit of 1×, 2× (default), 3× the tape width or free; kept per tape size. Cut after each label, once after the batch, or off. Several labels in one job (− n +, Ctrl+Up/Down), numbered with `{n}` / `{n+12}`. | ada16ed.. |
+| 0.20.1 | 2026-11-06 | Quick label opens with the last text, selected (typing replaces it, Ctrl+Enter prints it); one label at each start. | e280164.. |
+| 0.20.2 | 2026-11-06 | Quick label numbering: `{n+12}` adds 12, so it starts at 13. | 3bd6673.. |
+| 0.21.0 | 2026-11-06 | Quick label resident mode (Settings, Windows): a background process holds Ctrl+Alt+L and starts with Windows; the window is there in about 0.5 s instead of Explorer's seconds. One window at a time (a second start brings it forward). Header button Printers → Settings. Installer stops a running Quick label, keeps resident mode, new shortcut and icon cache refresh (Start menu icon). | ebd95a4.. |
+| 0.22.0 | 2026-11-06 | Quick label: Fill lines (Ctrl+F), every line as large as fits the width, together shrunk to the height; per tape size. Direction as one chip that turns. | 874705a.. |
+| 0.23.0 | 2026-11-06 | Quick label: tray icon while staying ready in the background (click opens; menu: stop until the next sign-in, switch staying ready off). | 3cbae1c.. |
+| 0.24.0 | 2026-11-06 | Quick label: Search the network for Brother QL printers (SNMP to every address of this PC's /24 and of printers already set, 1.5 s), Add from the list; `--find-printers`. | 084688e.. |
+| 0.24.1 | 2026-11-06 | Quick label shows its version next to the title. | 6e3dc2b.. |
+| 0.24.2 | 2026-11-06 | Quick label: direction chip with a small label icon (wide for lengthwise, tall for sideways); EN \| NL as one switch. | 0f38631.. |
+| 0.24.3 | 2026-11-06 | Quick label: direction icon shows the tape: a strip with dashed cuts for continuous tape, a closed label for die-cut. `QUICKLABEL_TAPE` sets the preview tape without a printer. | 5f727be.. |
+| 0.25.0 | 2026-11-06 | Quick label: the label's size as dimension lines along the preview (length under it, width beside it); Cut and Length together on the right of the bar. | e6927c9.. |
+| 0.25.1 | 2026-11-06 | Quick label preview fills the tray: free filtered downscale (mipmaps), aspect kept, never upscaled; smaller margins. | 8993ed9.. |
+| 0.26.0 | 2026-11-06 | Copy and paste with other programs (eframe clipboard feature was off: ChopShop's console copy too). Quick label: Ctrl+B / Ctrl+I bold and italic around the selection, on and off; `/` back to the text; preview shrunk with Catmull-Rom to screen pixels, drawn 1:1 (sharper). | eb56e04.. |
+| 0.26.1 | 2026-11-06 | ChopShop: EN \| NL as one switch, as in Quick label. | 784bada.. |
+| 0.27.0 | 2026-11-06 | Quick label on tape: no margin at the label's ends, the text cut to its ink (the printer's 3 mm feed is the margin, as on ChopShop's labels); the window stays open after printing (Settings: close after printing); the printer's own name (SNMP sysName) with its model in the status. | e6538db.. |
+| 0.27.1 | 2026-11-06 | Quick label: `install.ps1` only installs (exe, Start menu item), the hotkey is set in the app; more room above the preview; the window no longer stays on top. | e6538db.. |
+| 0.27.2 | 2026-11-06 | Quick label: drawn check mark in the "printed" pill (the font has no ✔); it fades out after 5 s, errors stay. | e6538db.. |
+| 0.27.3 | 2026-11-06 | Quick label: Ctrl+N (or a click on the number) types the number of labels; Enter or Esc back to the text. | 2882693.. |
+| 0.28.0 | 2026-11-06 | Quick label: high resolution (600 dpi along the tape) per printer, on by default, on models that have it (Resolution and the size check in ql-raster); typeface menu: Barlow, Roboto, Source Serif (real italics). ql-raster: sysName OID fixed. | 31b4034.. |
+| 0.29.0 | 2026-11-06 | Quick label prints on USB without the Brother driver (usbprint; `usb:<serial>`, found by the search); `--print`, `--find-printers` with status, `--abort` from the command line. Raster jobs no longer use zero raster lines (5Ah, TIFF mode only): over USB the QL stopped at them. | 2623e3f.. |
+| 0.30.0 | 2026-11-06 | Quick label: TIFF (PackBits) compression on models that take it (not the QL-800), `Z` for blank lines; USB printers listed in Settings by themselves; the printer chips are one chip with a list. | b3639f8.. |
+| 0.30.1 | 2026-11-06 | Quick label: network jobs no longer wait in a QL that is also on USB. A USB printer that answers on the network (same serial) is no longer asked over USB (its status comes from the network); no status requests around prints, until the printer has printed and is ready. | 7429d3b.. |
+| 0.31.0 | 2026-11-06 | Quick label from the command line: a text prints without the window (`quicklabel "Rack 4" "**do not move**"`), options for the chips (`--sideways`, `--fill-lines`, `--cut`, `--length`), `-n`, `--font`, `--hq`, `--png`; `-p` by number or address, else the first printer that is ready; `--list-printers [--search]`; `--help`; `quicklabel.com` next to the exe, so cmd waits for it. Replaces `--print`, `--find-printers`. | ebe6d48.. |
+| 0.31.1 | 2026-11-07 | Its own version number. Printing, label drawing and typefaces come from ql-raster 0.2 (MIT/Apache), no longer from ChopShop's crates; same behaviour. | |

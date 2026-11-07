@@ -78,11 +78,11 @@ pub enum Cut {
 impl Cut {
     /// The printer job's cut.
     #[must_use]
-    pub fn job(self) -> chopshop_printer::job::Cut {
+    pub fn job(self) -> ql_raster::job::Cut {
         match self {
-            Self::Each => chopshop_printer::job::Cut::Each,
-            Self::Batch => chopshop_printer::job::Cut::End,
-            Self::Off => chopshop_printer::job::Cut::Off,
+            Self::Each => ql_raster::job::Cut::Each,
+            Self::Batch => ql_raster::job::Cut::End,
+            Self::Off => ql_raster::job::Cut::Off,
         }
     }
 }
@@ -107,8 +107,8 @@ impl Settings {
 
     /// The labels' typeface.
     #[must_use]
-    pub fn typeface(&self) -> chopshop_label::Typeface {
-        chopshop_label::Typeface::from_code(&self.typeface)
+    pub fn typeface(&self) -> ql_raster::label::Typeface {
+        ql_raster::label::Typeface::from_code(&self.typeface)
     }
 
     /// Where they are kept: `QUICKLABEL_SETTINGS`, else `%APPDATA%\iotta\quicklabel.json`, else

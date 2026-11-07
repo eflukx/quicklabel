@@ -2,15 +2,14 @@
 name = "quicklabel"
 description = "Quick label: type a few lines, Ctrl+Enter prints them on a Brother QL."
 default-run = "quicklabel"
-version.workspace = true
+version = "0.31.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
 chopshop-i18n.workspace = true
-chopshop-label.workspace = true
-chopshop-printer.workspace = true
+ql-raster.workspace = true
 clap.workspace = true
 eframe.workspace = true
 egui.workspace = true

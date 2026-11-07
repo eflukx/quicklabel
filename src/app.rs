@@ -4,11 +4,11 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use chopshop_i18n::{Language, t, tf};
-use chopshop_label::{Length, Run, TextLabel, Typeface};
-use chopshop_printer::Media;
-use chopshop_printer::job::Resolution;
 use egui::text::{CCursor, CCursorRange};
 use egui::{Color32, CornerRadius, Key, Modifiers, RichText, Ui};
+use ql_raster::Media;
+use ql_raster::job::Resolution;
+use ql_raster::label::{Length, Run, TextLabel, Typeface};
 
 use crate::printer::{Link, State};
 use crate::settings::{self, Cut, Layout, Settings};
@@ -217,7 +217,12 @@ impl App {
     }
 
     /// The raster of label `index` of the run (`{n}` filled in).
-    fn render(&self, media: &Media, index: u16, resolution: Resolution) -> chopshop_label::Bitmap {
+    fn render(
+        &self,
+        media: &Media,
+        index: u16,
+        resolution: Resolution,
+    ) -> ql_raster::label::Bitmap {
         let layout = self.layout(media);
         let (length, run) = shape(media, layout);
         let label = TextLabel::new(&numbering::fill(&self.text, index))
@@ -231,7 +236,7 @@ impl App {
     }
 
     /// Every label of the run.
-    fn render_all(&self, media: &Media, resolution: Resolution) -> Vec<chopshop_label::Bitmap> {
+    fn render_all(&self, media: &Media, resolution: Resolution) -> Vec<ql_raster::label::Bitmap> {
         (0..self.copies)
             .map(|index| self.render(media, index, resolution))
             .collect()
@@ -1181,7 +1186,7 @@ impl App {
             .as_ref()
             .is_none_or(|(at, _)| at.elapsed() > Duration::from_secs(3));
         if stale {
-            let found = chopshop_printer::usb::find()
+            let found = ql_raster::usb::find()
                 .into_iter()
                 .map(|printer| printer.address)
                 .collect();
@@ -1229,7 +1234,7 @@ impl App {
         if let Some(receiver) = &self.search {
             match receiver.try_recv() {
                 Ok(found) => {
-                    let networks = chopshop_printer::net::searched_networks(&known);
+                    let networks = ql_raster::net::searched_networks(&known);
                     self.searched = Some((networks, found));
                     self.search = None;
                 }
@@ -1256,13 +1261,13 @@ impl App {
                 let ctx = ctx.clone();
                 let known = known.clone();
                 std::thread::spawn(move || {
-                    let mut found: Vec<Found> = chopshop_printer::usb::find()
+                    let mut found: Vec<Found> = ql_raster::usb::find()
                         .into_iter()
                         .map(|printer| {
                             // Not over USB when it answers on the network.
                             let model = crate::printer::network_status(&printer.address)
                                 .map_or_else(
-                                    || chopshop_printer::usb::query_status(&printer.address),
+                                    || ql_raster::usb::query_status(&printer.address),
                                     Ok,
                                 )
                                 .map_or_else(|_| "Brother QL".to_owned(), |status| {
@@ -1272,9 +1277,9 @@ impl App {
                         })
                         .collect();
                     found.extend(
-                        chopshop_printer::net::discover(Duration::from_millis(1500), &known)
+                        ql_raster::net::discover(Duration::from_millis(1500), &known)
                             .into_iter()
-                            .filter(chopshop_printer::net::Found::is_brother_ql)
+                            .filter(ql_raster::net::Found::is_brother_ql)
                             .map(|device| (device.address.to_string(), device.model)),
                     );
                     let _ = sender.send(found);

@@ -15,10 +15,10 @@
 use std::io::Read;
 use std::path::PathBuf;
 
-use chopshop_label::Typeface;
-use chopshop_printer::job::{self, Resolution};
-use chopshop_printer::{Media, Status, net, raster, usb};
 use clap::{Parser, ValueEnum};
+use ql_raster::job::{self, Resolution};
+use ql_raster::label::Typeface;
+use ql_raster::{Media, Status, net, raster, usb};
 
 use crate::settings::{Cut, Layout, Settings};
 use crate::{app, numbering};
@@ -484,7 +484,7 @@ fn layout(args: &Args, settings: &Settings, media: &Media) -> Layout {
 fn print(args: &Args) -> Result<String, String> {
     let settings = Settings::load();
     let text = text(args)?;
-    if chopshop_label::TextLabel::new(&text).is_empty() {
+    if ql_raster::label::TextLabel::new(&text).is_empty() {
         return Err("no text".to_owned());
     }
     let typeface = match args.font {
@@ -525,7 +525,7 @@ fn print(args: &Args) -> Result<String, String> {
     let across = u32::from(media.print_pins);
     let labels: Vec<_> = (0..args.copies)
         .map(|index| {
-            let label = chopshop_label::TextLabel::new(&numbering::fill(&text, index))
+            let label = ql_raster::label::TextLabel::new(&numbering::fill(&text, index))
                 .fill_lines(layout.fill_lines)
                 .typeface(typeface);
             match resolution {

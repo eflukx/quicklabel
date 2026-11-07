@@ -17,8 +17,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use chopshop_i18n::tf;
-use chopshop_label::Bitmap;
-use chopshop_printer::{Media, Status, job, net, raster, usb};
+use ql_raster::label::Bitmap;
+use ql_raster::{Media, Status, job, net, raster, usb};
 
 /// How often the status is asked.
 const POLL: Duration = Duration::from_secs(3);

@@ -8,7 +8,7 @@
 //! window, `quicklabel --help` lists the options ([`cli`]).
 //!
 //! Working principle: one small window. The text is laid out for the tape the printer reports
-//! ([`chopshop_label::TextLabel`]): along continuous tape as long as the text needs, a die-cut
+//! ([`ql_raster::label::TextLabel`]): along continuous tape as long as the text needs, a die-cut
 //! label filled in the direction with the larger letters. Printers and language are kept in
 //! `%APPDATA%\iotta\quicklabel.json` (elsewhere `~/.config/iotta/quicklabel.json`; the
 //! `QUICKLABEL_SETTINGS` variable points elsewhere). The options decide between window and
