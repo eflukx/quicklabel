@@ -575,12 +575,9 @@ fn print(args: &Args) -> Result<String, String> {
             path.to_string_lossy()
         ));
     }
-    if usb::is_usb(&address) {
-        usb::send_job(&address, &bytes)
-    } else {
-        net::send_job(&address, &bytes)
-    }
-    .map_err(|error| format!("{address}: {error}"))?;
+    ql_raster::Printer::new(&address)
+        .send_job(&bytes)
+        .map_err(|error| format!("{address}: {error}"))?;
 
     let copies = if args.copies > 1 {
         format!("{} labels", args.copies)
