@@ -376,7 +376,10 @@ fn list_printers(search: bool) {
     for device in net::discover(std::time::Duration::from_millis(1500), &known) {
         let address = device.address.to_string();
         if device.is_brother_ql() && !settings.printers.contains(&address) {
-            println!("    {address}  {}", device.model);
+            match &device.name {
+                Some(name) => println!("    {address}  {name} · {}", device.model),
+                None => println!("    {address}  {}", device.model),
+            }
             found += 1;
         }
     }

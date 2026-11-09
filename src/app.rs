@@ -83,7 +83,8 @@ struct App {
     screenshot: Option<(PathBuf, Instant)>,
 }
 
-/// A printer the search found: its address (`usb:<serial>` on USB) and model.
+/// A printer the search found: its address (`usb:<serial>` on USB) and what it is (its own
+/// name and model).
 type Found = (String, String);
 
 /// Runs the window until it closes.
@@ -1306,7 +1307,14 @@ impl App {
                         ql_raster::net::discover(Duration::from_millis(1500), &known)
                             .into_iter()
                             .filter(ql_raster::net::Found::is_brother_ql)
-                            .map(|device| (device.address.to_string(), device.model)),
+                            .map(|device| {
+                                // The printer's own name first (`LabelPrinter_2`), when set.
+                                let what = match device.name {
+                                    Some(name) => format!("{name} · {}", device.model),
+                                    None => device.model,
+                                };
+                                (device.address.to_string(), what)
+                            }),
                     );
                     let _ = sender.send(found);
                     ctx.request_repaint();
